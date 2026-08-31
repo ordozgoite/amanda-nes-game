@@ -83,7 +83,13 @@ def main():
           and nes.bus.ram[sym["menu_saindo"]] == 1)
     for _ in range(3): nes.frame()
     check("o aviso de START some", nes.nt_text(POS_AVISO_START, 25) == " " * 25)
-    for _ in range(30): nes.frame()
+    for _ in range(5): nes.frame()          # ~130ms depois do plin
+    check("o eco 1 toca no pulso 1, mais baixo", nes.bus.apu[0x00] == 0x59,
+          f"${nes.bus.apu[0x00]:02X}")
+    for _ in range(8): nes.frame()          # ~130ms depois do eco 1
+    check("o eco 2 toca no pulso 1, mais baixo ainda", nes.bus.apu[0x00] == 0x55,
+          f"${nes.bus.apu[0x00]:02X}")
+    for _ in range(17): nes.frame()
     check("ainda esperando, nao pulou direto pra cena", nes.bus.ram[sym["tela"]] == 0)
     for _ in range(40): nes.frame()    # os ~60 quadros de espera, com folga
     check("tela = cena", nes.bus.ram[sym["tela"]] == 1)

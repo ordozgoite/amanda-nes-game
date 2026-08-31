@@ -50,6 +50,11 @@ POS_AMANDA    = $2000 + 17*32 + 13
 POS_ATTR      = $23C0 + 3*8 + 3
 POS_AVISO_START = $2000 + 24*32 + 3   ; "APERTE START..." la embaixo, centralizado
 
+; ---- espera entre o START e a pizzaria, com o eco do plin no meio ----
+MENU_ESPERA_INICIAL = 60   ; ~1s a 60 quadros/s
+MENU_ESPERA_ECO1     = MENU_ESPERA_INICIAL - 8    ; ~130ms depois do plin
+MENU_ESPERA_ECO2     = MENU_ESPERA_INICIAL - 16   ; ~130ms depois do eco 1
+
 ; ---- personagens ----
 ; A Amanda tem 16x32 (2 tiles de largura por 4 de altura, 8 sprites).
 ; O Victor tem 16x24 e fica parado, sentado a mesa da frente.
@@ -320,12 +325,24 @@ atualiza_menu:
     lda #$01
     sta apaga_aviso           ; o NMI apaga o texto no proximo quadro
     sta menu_saindo
-    lda #60                   ; ~1s a 60 quadros/s -- da pra ouvir o plin
+    lda #MENU_ESPERA_INICIAL
     sta menu_espera
 @fim:
     rts
 @contando:
     dec menu_espera
+
+    lda menu_espera            ; o "eco" e so o mesmo plin de novo, mais
+    cmp #MENU_ESPERA_ECO1      ; baixo, no outro pulso (livre nesse instante
+    bne @nao_eco1               ; que o motor de 3 canais ainda esta desligado)
+    jsr toca_eco1
+@nao_eco1:
+    lda menu_espera
+    cmp #MENU_ESPERA_ECO2
+    bne @nao_eco2
+    jsr toca_eco2
+@nao_eco2:
+    lda menu_espera
     bne @fim
     jsr carrega_cena
     rts
@@ -1768,6 +1785,34 @@ toca_plin:
     lda per_hi + PLIN_NOTA
     ora #(9 << 3)             ; contador de duracao curto (indice 9 = 8 quadros)
     sta $4007
+    rts
+
+; --------------------------------------------------------------------------
+;  O "eco" do plin: a mesma nota de novo, mais baixa a cada vez, no pulso 1
+;  (o outro canal livre nesse instante). Nao existe eco de verdade no APU
+;  do NES -- sem linha de atraso --, entao a imitacao e essa: repetir o som
+;  mais fraco e um pouco depois, tocado por MENU_ESPERA_ECO1/2 em cima do
+;  contador que ja existia pra dar tempo do plin original tocar sozinho.
+;  Duty 25% (mais fino que os 50% do plin) ajuda a diferenciar do original.
+; --------------------------------------------------------------------------
+toca_eco1:
+    lda #%01011001           ; duty 25%, volume constante 9
+    sta $4000
+    lda per_lo + PLIN_NOTA
+    sta $4002
+    lda per_hi + PLIN_NOTA
+    ora #(9 << 3)
+    sta $4003
+    rts
+
+toca_eco2:
+    lda #%01010101           ; duty 25%, volume constante 5 -- o mais fraco
+    sta $4000
+    lda per_lo + PLIN_NOTA
+    sta $4002
+    lda per_hi + PLIN_NOTA
+    ora #(9 << 3)
+    sta $4003
     rts
 
 musica_tick:
