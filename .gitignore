@@ -1,0 +1,14 @@
+# tudo em build/ e gerado por `make`
+build/
+
+# a ROM da raiz e versionada de proposito (jogo.nes),
+# mas os arquivos intermediarios nao
+*.o
+*.map
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
