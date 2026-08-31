@@ -372,14 +372,17 @@ def para_tiles(texto):
         else: raise ValueError(f"sem tile pra {ch!r}")
     return fora
 
-# O dialogo tem duas caixas de bala -- o Victor fala primeiro (a dele fecha
-# antes da dela abrir, perto de onde a Amanda esta parada; ver caixa_pag_tab
-# em src/jogo.s). Cada linha tem no maximo 14 caracteres, a largura util
-# do balao.
-FALA_VICTOR = [
+# O dialogo tem tres partes, cada uma na sua propria caixa de bala -- uma
+# fecha e a proxima abre. As duas primeiras sao do Victor (mesma posicao,
+# perto da cabeca dele); a ultima e da Amanda, mais perto de onde ela fica
+# parada (ver caixa_pag_tab/falante_tab em src/jogo.s). Cada linha tem no
+# maximo 14 caracteres, a largura util do balao.
+FALA_VICTOR_1 = [
     "NOSSA! VOC\xCA",
     "EST\xC1 MUITO",
     "BONITA!",
+]
+FALA_VICTOR_2 = [
     "EU VIM DE",
     "CROCS RSRS",
 ]
@@ -387,7 +390,10 @@ FALA_AMANDA = [
     "SENTA AQUI",
     "DO MEU LADO!",
 ]
-FALA = FALA_VICTOR + FALA_AMANDA
+# grupos, na ordem em que aparecem; falante de cada um: 0 = Victor, 1 = Amanda
+GRUPOS_FALA   = [FALA_VICTOR_1, FALA_VICTOR_2, FALA_AMANDA]
+FALANTE_GRUPO = [0, 0, 1]
+FALA = [linha for grupo in GRUPOS_FALA for linha in grupo]
 
 # ================================================================== saida
 
@@ -492,11 +498,21 @@ def main():
         bs = ", ".join(f"${v:02X}" for v in mini_tiles(texto))
         linhas.append(f"{nome}:  .byte {bs}   ; {texto}")
     linhas.append("")
+    # cada grupo (caixa) sabe onde comeca e onde termina dentro de FALA, e
+    # quem fala nele -- o assembly nunca reconta isso na mao
+    inicios, fins, pos = [], [], 0
+    for g in GRUPOS_FALA:
+        inicios.append(pos)
+        pos += len(g)
+        fins.append(pos)
+    linhas += ["inicio_fala_tab: .byte " + ", ".join(str(v) for v in inicios),
+               "fim_fala_tab:    .byte " + ", ".join(str(v) for v in fins),
+               "falante_tab:     .byte " + ", ".join(str(v) for v in FALANTE_GRUPO), ""]
     linhas += [f"; quantas paginas de 256 bytes a CHR da cena ocupa -- o assembly",
                f"; le daqui em vez de ter o numero escrito na mao",
                f"PAGINAS_CENA  = {paginas}",
                f"N_FALAS       = {len(FALA)}",
-               f"N_FALA_VICTOR = {len(FALA_VICTOR)}   ; a partir daqui, fala e da caixa da Amanda",
+               f"N_PARTES      = {len(GRUPOS_FALA)}",
                f"TILE_BRANCO   = ${DLG_BRANCO:02X}",
                f"TILE_BORDA    = ${DLG_BORDA:02X}", ""]
     open("build/dialogo.inc", "w").write("\n".join(linhas))

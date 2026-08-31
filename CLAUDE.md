@@ -78,6 +78,13 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   volta, e o `cmp` de teto comparava o valor ja embrulhado -- que parecia
   pequeno, entao passava no teste. Depois de somar, cheque o carry (`bcs`)
   antes do `cmp`: se estourou 255, ja passou de qualquer teto menor.
+- **Limitar so um lado de uma faixa nao limita a faixa.** O salto da pizza
+  (`SALTO_MAX`) so limitava a base (o minimo) e somava um deslocamento fixo
+  por cima; perto da borda a base ficava presa em `ANDA_MIN`, mas o
+  deslocamento continuava indo ate o mesmo teto de sempre -- o salto real
+  passava longe do prometido. Precisa calcular base E topo (os dois
+  clampados na tela) antes de sortear, e sortear dentro do tamanho real
+  dessa faixa (`topo - base`), nao um deslocamento fixo.
 - **Trocar de musica no meio do jogo (`troca_musica`) mexe em `ch_ptr_lo/hi`
   em duas escritas separadas.** Se o NMI disparar entre elas, a musica le um
   ponteiro Frankenstein (byte baixo de uma nota, alto de outra) e ou trava

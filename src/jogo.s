@@ -150,7 +150,8 @@ dlg_txt:     .res 1         ; qual linha de fala (indice global em FALA)
 dlg_col:     .res 1         ; coluna dentro da linha
 dlg_wait:    .res 1
 dlg_tipo:    .res 1
-dlg_box:     .res 1         ; 0 = caixa do Victor, 1 = caixa da Amanda
+dlg_box:     .res 1         ; quem fala agora: 0 = Victor, 1 = Amanda (posicao/nome)
+dlg_parte:   .res 1         ; qual parte do dialogo (0, 1, 2...), indexa fala/falante
 perto:       .res 1         ; 1 = a Amanda esta ao alcance do Victor
 oam_attr:    .res 1         ; proprio da OAM: 'tmp' e da musica, que roda no NMI
 abre_jogo:   .res 1         ; 1 = o dialogo fechou; o laco principal troca de tela
@@ -166,6 +167,7 @@ jogo_espera: .res 1
 jogo_temp:   .res 1
 jogo_venceu: .res 1         ; 1 = ja disparou a comemoracao nesta rodada
 jogo_tmp:    .res 1
+jogo_tmp2:   .res 1
 placar_sujo: .res 1
 rng_seed:    .res 1
 ultimo_pz_x: .res 1         ; x da ultima pizza que nasceu, pra limitar o salto
@@ -547,6 +549,7 @@ atualiza_cena:
     lda #$00
     sta dlg_lin
     sta dlg_box              ; comeca sempre pela caixa do Victor
+    sta dlg_parte             ; primeira parte do dialogo inteiro
     sta player_frame          ; a boca aberta so existe no quadro 0 da cabeca
 
 @sprites:
@@ -989,8 +992,8 @@ passo_dialogo:
     lda #$02                ; moldura pronta, comeca a escrever
     sta dialogo
     jsr desenha_nome         ; a etiqueta com o nome aparece de uma vez
-    ldx dlg_box
-    lda inicio_fala_tab, x   ; cada caixa comeca na sua propria linha de fala
+    ldx dlg_parte
+    lda inicio_fala_tab, x   ; cada parte comeca na sua propria linha de fala
     sta dlg_txt
     lda #$00
     sta dlg_col
@@ -1015,10 +1018,14 @@ passo_dialogo:
     cmp #$08
     bcc @fim
     jsr restaura_atributos
-    lda dlg_box
-    bne @acabou_tudo         ; ja era a caixa da Amanda: acabou de verdade
-    lda #$01                 ; era a do Victor: abre a dela agora
-    sta dlg_box
+    inc dlg_parte
+    lda dlg_parte
+    cmp #N_PARTES
+    bcs @acabou_tudo         ; nao ha proxima parte: a conversa acabou
+    ldx dlg_parte
+    lda falante_tab, x       ; quem fala na proxima parte -- pode ser o
+    sta dlg_box              ; mesmo de novo (Victor 1 -> Victor 2)
+    lda #$01
     sta dialogo               ; volta pro estado 1 = abrindo
     lda #$00
     sta dlg_lin
@@ -1026,7 +1033,8 @@ passo_dialogo:
 @acabou_tudo:
     lda #$00
     sta dialogo
-    sta dlg_box              ; deixa pronta pra proxima conversa
+    sta dlg_box              ; deixa pronto pra proxima conversa
+    sta dlg_parte
     lda #$01                 ; o laco principal troca de tela no proximo quadro
     sta abre_jogo
     rts
@@ -1084,9 +1092,9 @@ escreve_letra:
     inc dlg_txt             ; $00 termina a linha
     lda #$00
     sta dlg_col
-    ldx dlg_box
+    ldx dlg_parte
     lda dlg_txt
-    cmp fim_fala_tab, x      ; cada caixa tem seu proprio fim
+    cmp fim_fala_tab, x      ; cada parte tem seu proprio fim
     bcc @fim
     lda #$03                ; acabou o texto: espera o B
     sta dialogo
@@ -1101,9 +1109,10 @@ escreve_letra:
     ldx dlg_box
     lda caixa_pag_tab, x
     sta PPUADDR
+    ldx dlg_parte
     lda dlg_txt
     sec
-    sbc inicio_fala_tab, x   ; linha DENTRO da caixa atual, nao global
+    sbc inicio_fala_tab, x   ; linha DENTRO da parte atual, nao global
     asl
     asl
     asl
@@ -1394,10 +1403,22 @@ spawna_pizza:
     rts                        ; as tres estao ocupadas, tenta de novo depois
 @achou:
     ; o x fica dentro de +-SALTO_MAX do x da pizza anterior, pra elas nao
-    ; saltarem de um extremo ao outro da tela. 'base' e o menor x possivel
-    ; (ultimo_pz_x - SALTO_MAX, sem passar de ANDA_MIN); dai soma um
-    ; deslocamento aleatorio de 0 a 2*SALTO_MAX e clampa no teto.
-    lda ultimo_pz_x
+    ; saltarem de um extremo ao outro da tela. Calcula base..topo (a faixa
+    ; toda, ja dentro da tela) e sorteia um valor DENTRO dela -- nao da pra
+    ; so limitar a base e somar um deslocamento fixo: perto de uma borda
+    ; isso deixava o topo escapar bem alem de SALTO_MAX pro outro lado.
+    lda ultimo_pz_x             ; topo = min(ultimo_pz_x + SALTO_MAX, ANDA_MAX-16)
+    clc
+    adc #SALTO_MAX
+    bcs @topo_estourou          ; passou de 255 -- estourou o teto com certeza
+    cmp #(ANDA_MAX-16)
+    bcc @tem_topo
+@topo_estourou:
+    lda #(ANDA_MAX-16)
+@tem_topo:
+    sta jogo_tmp2                ; jogo_tmp2 = topo
+
+    lda ultimo_pz_x             ; base = max(ultimo_pz_x - SALTO_MAX, ANDA_MIN)
     cmp #(SALTO_MAX + ANDA_MIN)
     bcc @usa_min
     sec
@@ -1408,22 +1429,23 @@ spawna_pizza:
 @tem_base:
     sta jogo_tmp                ; jogo_tmp = base
 
+    lda jogo_tmp2                ; jogo_tmp2 = (topo - base) + 1 = tamanho da faixa
+    sec
+    sbc jogo_tmp
+    clc
+    adc #$01
+    sta jogo_tmp2
+
     jsr avanca_rng
     lda rng_seed
 @mod:
-    cmp #(2*SALTO_MAX+1)        ; reduz pro intervalo 0-(2*SALTO_MAX)
+    cmp jogo_tmp2                ; reduz pro tamanho da faixa
     bcc @tem_delta
-    sbc #(2*SALTO_MAX+1)
+    sbc jogo_tmp2
     jmp @mod
 @tem_delta:
     clc
-    adc jogo_tmp
-    bcs @estoura             ; passou de 255 -- estourou o teto com certeza
-    cmp #(ANDA_MAX-16)
-    bcc @tem_x
-@estoura:
-    lda #(ANDA_MAX-16)
-@tem_x:
+    adc jogo_tmp                 ; x = base + deslocamento, sempre dentro da faixa
     sta pz_x, x
     sta ultimo_pz_x
     lda #26                    ; nasce logo abaixo da faixa vermelha do topo
@@ -1957,18 +1979,17 @@ borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5
 borda_meio:  .byte TILE_BORDA+1, TILE_BRANCO,  TILE_BORDA+6
 borda_dir:   .byte TILE_BORDA+2, TILE_BORDA+4, TILE_BORDA+7
 
-; ---- as duas caixas de fala: [0] = Victor, [1] = Amanda ----
+; ---- as duas caixas de fala (por QUEM fala): [0] = Victor, [1] = Amanda ----
 ; boxrow_tab e a unica coisa que realmente muda a posicao na tela; as
 ; outras tabelas sao so a mesma conta (ver comentario em CAIXA_COL) feita
-; pra cada linha de topo.
+; pra cada linha de topo. inicio_fala_tab/fim_fala_tab/falante_tab (por
+; PARTE do dialogo, nao por caixa) vem geradas em dialogo.inc.
 boxrow_tab:      .byte 8, 16          ; linha do topo, em tiles
 caixa_pag_tab:   .byte $21, $22       ; byte alto do endereco da caixa
 atrib1_tab:      .byte $D2, $E2       ; endereco dos 4 bytes de atributo de cima
 atrib2_tab:      .byte $DA, $EA       ; e os 4 de baixo
 restoff1_tab:    .byte 18, 34         ; onde ler esses bytes de volta em nam_cena+960
 restoff2_tab:    .byte 26, 42
-inicio_fala_tab: .byte 0, N_FALA_VICTOR   ; dlg_txt em que cada caixa comeca
-fim_fala_tab:    .byte N_FALA_VICTOR, N_FALAS ; e em que termina
 
 txt_victor:  .byte "VICTOR", $00
 txt_amanda:  .byte "AMANDA", $00

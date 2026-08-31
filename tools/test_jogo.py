@@ -17,7 +17,7 @@ def anda(nes, botao, n):
         nes.frame(botao)
 
 def entra_no_minigame(nes, sym):
-    """Boota, entra na pizzaria, passa pelas duas caixas de dialogo e cai no minigame."""
+    """Boota, entra na pizzaria, passa pelas tres partes do dialogo e cai no minigame."""
     for _ in range(12): nes.frame()
     nes.frame(BTN_START)
     for _ in range(70): nes.frame()    # o respiro pro plin, antes da cena carregar
@@ -26,9 +26,11 @@ def entra_no_minigame(nes, sym):
         if nes.bus.ram[sym["perto"]]:
             break
     nes.frame(BTN_B)
-    for _ in range(300): nes.frame()   # digita a fala do Victor e espera o B
-    nes.frame(BTN_B)                    # fecha a caixa dele, abre a da Amanda
-    for _ in range(200): nes.frame()   # digita a fala dela e espera o B
+    for _ in range(150): nes.frame()   # Victor, parte 1 ("...bonita!")
+    nes.frame(BTN_B)                    # fecha, abre a parte 2 (ainda o Victor)
+    for _ in range(150): nes.frame()   # Victor, parte 2 ("crocs rsrs")
+    nes.frame(BTN_B)                    # fecha a dele, abre a da Amanda
+    for _ in range(200): nes.frame()   # a fala dela inteira
     nes.frame(BTN_B)
     for _ in range(20): nes.frame()    # fecha a caixa dela e carrega o minigame
 
@@ -227,7 +229,25 @@ def main():
 
     d.frame(BTN_B)
     for _ in range(14): d.frame()
-    check("B fecha a caixa do Victor e abre a da Amanda",
+    check("B fecha a parte 1 do Victor e abre a parte 2 (mesma caixa)",
+          d.bus.ram[sym["dlg_box"]] == 0 and d.bus.ram[sym["dlg_parte"]] == 1
+          and d.bus.ram[sym["dialogo"]] in (1, 2),
+          f"dlg_box={d.bus.ram[sym['dlg_box']]} parte={d.bus.ram[sym['dlg_parte']]} "
+          f"dialogo={d.bus.ram[sym['dialogo']]}")
+
+    for _ in range(150): d.frame()
+    check("a parte 2 do Victor termina", d.bus.ram[sym["dialogo"]] == 3)
+    nome_p2 = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(7)]
+    check("ainda e a etiqueta VICTOR: (mesma caixa)",
+          nome_p2 == [255, 249, 247, 254, 252, 253, 245], f"tiles {nome_p2}")
+    letras_p2 = [d.bus.vram[0x2000 + 10*32 + 9 + i] for i in range(9)]
+    check("a parte 2 esta na tela: EU VIM DE",
+          letras_p2 == [210, 226, 232, 227, 214, 218, 232, 209, 210],
+          f"tiles {letras_p2}")
+
+    d.frame(BTN_B)
+    for _ in range(14): d.frame()
+    check("B fecha a parte 2 do Victor e abre a da Amanda",
           d.bus.ram[sym["dlg_box"]] == 1 and d.bus.ram[sym["dialogo"]] in (1, 2),
           f"dlg_box={d.bus.ram[sym['dlg_box']]} dialogo={d.bus.ram[sym['dialogo']]}")
 
