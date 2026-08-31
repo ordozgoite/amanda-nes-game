@@ -42,6 +42,7 @@ capturas: $(JOGO)
 
 audio: $(JOGO)
 	python3 tools/render_audio.py $(JOGO) build/musica.wav 2100
+	python3 tools/audio_menu.py
 	python3 tools/audio_dialogo.py
 	python3 tools/audio_minigame.py
 

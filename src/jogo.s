@@ -125,6 +125,11 @@ botoes:      .res 1
 botoes_ant:  .res 1
 botoes_novos:.res 1         ; so os que acabaram de ser apertados
 
+; --- menu: pausa entre o START e a pizzaria, pra dar tempo de ouvir o plin ---
+menu_saindo: .res 1         ; 1 = START ja foi apertado, contando pra sair
+menu_espera: .res 1
+apaga_aviso: .res 1         ; 1 = o NMI precisa apagar "APERTE START..."
+
 player_x:    .res 1
 player_y:    .res 1
 player_dir:  .res 1         ; 0 = olhando pra direita, 1 = pra esquerda
@@ -306,11 +311,38 @@ le_controle:
 ;  Tela: menu
 ; ==========================================================================
 atualiza_menu:
+    lda menu_saindo           ; ja apertou START? so espera a contagem zerar
+    bne @contando
     lda botoes_novos
     and #BTN_START
     beq @fim
     jsr toca_plin
+    lda #$01
+    sta apaga_aviso           ; o NMI apaga o texto no proximo quadro
+    sta menu_saindo
+    lda #60                   ; ~1s a 60 quadros/s -- da pra ouvir o plin
+    sta menu_espera
+@fim:
+    rts
+@contando:
+    dec menu_espera
+    bne @fim
     jsr carrega_cena
+    rts
+
+; ---- some com "APERTE START..." -- roda no NMI, so escreve durante o vblank ----
+apaga_aviso_start:
+    lda apaga_aviso
+    beq @fim
+    lda #$00
+    sta apaga_aviso
+    bit PPUSTATUS
+    PPU_ADDR POS_AVISO_START
+    lda #$00                  ; tile 0 = espaco em branco
+    ldy #25
+:   sta PPUDATA
+    dey
+    bne :-
 @fim:
     rts
 
@@ -321,6 +353,10 @@ carrega_menu:
 
     lda #BANCO_MENU
     jsr troca_banco
+
+    lda #$00
+    sta menu_saindo            ; comeca sempre livre pra um novo START
+    sta apaga_aviso
 
     jsr musica_para          ; o menu fica em silencio
 
@@ -1640,6 +1676,7 @@ nmi:
     jmp @scroll
 @menu:
     jsr pulsa_coracao
+    jsr apaga_aviso_start
     jmp @scroll
 @cena:
     jsr passo_dialogo

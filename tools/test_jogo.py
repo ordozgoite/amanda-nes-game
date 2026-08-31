@@ -20,7 +20,7 @@ def entra_no_minigame(nes, sym):
     """Boota, entra na pizzaria, passa pelas duas caixas de dialogo e cai no minigame."""
     for _ in range(12): nes.frame()
     nes.frame(BTN_START)
-    for _ in range(6): nes.frame()
+    for _ in range(70): nes.frame()    # o respiro pro plin, antes da cena carregar
     for _ in range(200):
         nes.frame(BTN_RIGHT)
         if nes.bus.ram[sym["perto"]]:
@@ -74,10 +74,18 @@ def main():
     check("PPUADDR nao fica parado dentro da paleta",
           not (0x3F00 <= nes.bus.vaddr <= 0x3F1F), f"${nes.bus.vaddr:04X}")
 
-    print("\n== 3. START leva pra pizzaria ==")
+    print("\n== 3. START leva pra pizzaria (com um respiro pro plin) ==")
+    POS_AVISO_START = 0x2000 + 24 * 32 + 3
     nes.frame(BTN_START)
-    for _ in range(6):
-        nes.frame()
+    check("o plin toca na hora", nes.bus.apu[0x06] | nes.bus.apu[0x07],
+          f"${nes.bus.apu[0x06]:02X} ${nes.bus.apu[0x07]:02X}")
+    check("ainda no menu, so contando", nes.bus.ram[sym["tela"]] == 0
+          and nes.bus.ram[sym["menu_saindo"]] == 1)
+    for _ in range(3): nes.frame()
+    check("o aviso de START some", nes.nt_text(POS_AVISO_START, 25) == " " * 25)
+    for _ in range(30): nes.frame()
+    check("ainda esperando, nao pulou direto pra cena", nes.bus.ram[sym["tela"]] == 0)
+    for _ in range(40): nes.frame()    # os ~60 quadros de espera, com folga
     check("tela = cena", nes.bus.ram[sym["tela"]] == 1)
     check("banco 1 selecionado", nes.bus.banco == 1, f"banco {nes.bus.banco}")
     check("placa PIZZA na tela", nes.nt_text(0x2000 + 2 * 32 + 16, 8)[1:6] != "     ",
@@ -154,7 +162,7 @@ def main():
     d = NES(ROM)
     for _ in range(12): d.frame()
     d.frame(BTN_START)
-    for _ in range(6): d.frame()
+    for _ in range(70): d.frame()      # o respiro pro plin, antes da cena carregar
     # longe dele: nada de aviso
     check("longe, sem aviso", d.bus.ram[sym["perto"]] == 0 and d.bus.oam[56] >= 0xEF)
     for _ in range(200):
@@ -353,7 +361,7 @@ def main():
     check("menu em silencio", nes.bus.apu[0x00] & 0x0F == 0 and
           nes.bus.apu[0x04] & 0x0F == 0)
     nes.frame(BTN_START)                    # entra na pizzaria: a musica comeca
-    for _ in range(20):
+    for _ in range(70):                     # o respiro pro plin, antes da cena carregar
         nes.frame()
     p1 = nes.bus.apu[0x02] | ((nes.bus.apu[0x03] & 7) << 8)
     mudou = False
@@ -373,6 +381,8 @@ def main():
     print("\n== 12. Estabilidade ==")
     for _ in range(3):
         nes.frame(BTN_START)
+        for _ in range(70):            # o respiro pro plin, antes da cena carregar
+            nes.frame()
         for _ in range(20):
             nes.frame(BTN_RIGHT)
         nes.frame(BTN_START)          # START entra e sai
