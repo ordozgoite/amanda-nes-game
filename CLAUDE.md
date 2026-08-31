@@ -60,7 +60,8 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
 - **Cada canal de musica roda o proprio laco.** Os tres precisam somar a mesma
   duracao total, ou vao se desencontrando. Ha um `assert` em `make_song.py`.
 - **O tom de pele ($36) e igual ao chao da pizzaria.** Perna a mostra fica
-  invisivel; por isso a Amanda usa jeans.
+  invisivel; por isso a Amanda usa vestido ate a canela, sem pele exposta
+  abaixo do tronco.
 - **A CHR da cena e enviada em paginas.** O numero vem de `PAGINAS_CENA`; se
   alguem escrever na mao e a cena crescer, os tiles do fim somem.
 

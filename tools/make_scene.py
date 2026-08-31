@@ -410,10 +410,10 @@ def main():
     for p in PALETAS:
         pal += bytes(p)
     # paletas de sprite (ver tools/make_sprites.py)
-    pal += bytes([0x0F, 0x07, 0x36, 0x17])   # 0: Amanda, cabeca
-    pal += bytes([0x0F, 0x0F, 0x36, 0x27])   # 1: Amanda, tronco
-    pal += bytes([0x0F, 0x07, 0x36, 0x10])   # 2: Victor sentado
-    pal += bytes([0x0F, 0x0F, 0x01, 0x27])   # 3: Amanda, jeans + pontas do cabelo
+    pal += bytes([0x0F, 0x0F, 0x36, 0x24])   # 0: Amanda, cabeca (cabelo preto, laco rosa)
+    pal += bytes([0x0F, 0x0F, 0x36, 0x0F])   # 1: Amanda, tronco (vestido preto)
+    pal += bytes([0x0F, 0x0F, 0x36, 0x10])   # 2: Victor sentado (cabelo preto, camisa cinza)
+    pal += bytes([0x0F, 0x0F, 0x0F, 0x0F])   # 3: Amanda, pernas (vestido, sapatos, cabelo -- tudo preto)
     open("build/cena.pal", "wb").write(bytes(pal[:32]))
     open("build/cena.nam", "wb").write(bytes(nametable) + bytes_de_atributo())
 
