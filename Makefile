@@ -1,6 +1,7 @@
 JOGO  = jogo.nes
 DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin \
-        build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc
+        build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc \
+        build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc
 
 all: $(JOGO)
 
@@ -16,6 +17,10 @@ build/chr_sprites.bin: tools/make_sprites.py tools/make_chr.py
 build/chr_cena.bin build/cena.nam build/cena.pal build/dialogo.inc: tools/make_scene.py tools/make_chr.py
 	@mkdir -p build
 	python3 tools/make_scene.py
+
+build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc: tools/make_jogo.py tools/make_chr.py tools/make_scene.py
+	@mkdir -p build
+	python3 tools/make_jogo.py
 
 build/musica.inc: tools/make_song.py
 	@mkdir -p build

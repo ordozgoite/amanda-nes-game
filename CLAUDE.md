@@ -64,12 +64,25 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   abaixo do tronco.
 - **A CHR da cena e enviada em paginas.** O numero vem de `PAGINAS_CENA`; se
   alguem escrever na mao e a cena crescer, os tiles do fim somem.
+- **A macro `PPU_ADDR` usa o registrador A.** Se voce calcula um valor em A
+  (ex.: o tile de um digito) e so DEPOIS chama `PPU_ADDR`, ela reescreve A
+  com o endereco e o valor calculado se perde. Guarde em Y ou na pilha antes
+  de chamar `PPU_ADDR`, e restaure depois -- foi assim que o digito de erros
+  do placar saiu errado da primeira vez.
+- **O placar (ou qualquer escrita da NMI) leva um quadro pra aparecer.** O
+  laco principal muda o estado (pontos, fase) num quadro; so a NMI seguinte
+  desenha. Testes que leem a tela logo depois de detectar a mudanca no RAM
+  precisam esperar mais um `frame()`, senao veem o valor antigo.
 
 ## Estado atual
 
-Pronto: tela de titulo, musica em loop, cenario da pizzaria, Amanda jogavel,
-Victor sentado, aviso de interacao, balao de fala letra a letra com tique e
-boca mexendo.
+Pronto: tela de titulo, musica em loop, cenario da pizzaria, dialogo completo
+(incluindo a resposta dela), minigame das pizzas caindo (arcade rejogavel,
+com placar, derrota em `ERROS_MAX` erros e uma comemoracao ao alcancar
+`PONTOS_MIN` pontos).
 
-Falta: a resposta dela, outras memorias (cenarios), a melodia do refrao (que
-depende de fonte externa — veja a secao Musica do README) e o retrato final.
+Falta: o conteudo de verdade da comemoracao -- hoje e so um placeholder (o
+jogo congela um instante e volta a jogar, sem imagem nem texto; ver
+`atualiza_jogo` em `src/jogo.s`, estado `jogo_fase = 1`). Tambem faltam
+outras memorias (cenarios) e o retrato final -- que pode virar o conteudo
+real dessa comemoracao quando estiver decidido.

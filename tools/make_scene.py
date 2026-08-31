@@ -21,6 +21,13 @@ PALETAS = [
     [0x0F, 0x09, 0x19, 0x24],   # 3 verde escuro / verde / rosa -> plantas, neon
 ]
 
+# paletas de sprite da Amanda -- exportadas porque o minigame (make_jogo.py)
+# reaproveita as mesmas, pra ela ficar identica nas duas cenas
+PALETA_SPRITE_CABECA = [0x0F, 0x0F, 0x36, 0x24]   # cabelo preto, laco rosa
+PALETA_SPRITE_TRONCO = [0x0F, 0x0F, 0x36, 0x0F]   # vestido preto
+PALETA_SPRITE_VICTOR = [0x0F, 0x0F, 0x36, 0x10]   # cabelo preto, camisa cinza
+PALETA_SPRITE_PERNAS = [0x0F, 0x0F, 0x0F, 0x0F]   # vestido, sapatos, cabelo -- tudo preto
+
 px   = [[0] * W for _ in range(H)]        # indice de cor por pixel
 attr = [[2] * 16 for _ in range(15)]      # paleta por bloco de 16x16
 
@@ -339,6 +346,8 @@ FALA = [
     "BONITA!",
     "EU VIM DE",
     "CROCS RSRS",
+    "SENTA AQUI",
+    "DO MEU LADO!",
 ]
 
 # ================================================================== saida
@@ -410,10 +419,10 @@ def main():
     for p in PALETAS:
         pal += bytes(p)
     # paletas de sprite (ver tools/make_sprites.py)
-    pal += bytes([0x0F, 0x0F, 0x36, 0x24])   # 0: Amanda, cabeca (cabelo preto, laco rosa)
-    pal += bytes([0x0F, 0x0F, 0x36, 0x0F])   # 1: Amanda, tronco (vestido preto)
-    pal += bytes([0x0F, 0x0F, 0x36, 0x10])   # 2: Victor sentado (cabelo preto, camisa cinza)
-    pal += bytes([0x0F, 0x0F, 0x0F, 0x0F])   # 3: Amanda, pernas (vestido, sapatos, cabelo -- tudo preto)
+    pal += bytes(PALETA_SPRITE_CABECA)
+    pal += bytes(PALETA_SPRITE_TRONCO)
+    pal += bytes(PALETA_SPRITE_VICTOR)
+    pal += bytes(PALETA_SPRITE_PERNAS)
     open("build/cena.pal", "wb").write(bytes(pal[:32]))
     open("build/cena.nam", "wb").write(bytes(nametable) + bytes_de_atributo())
 

@@ -15,6 +15,20 @@ def anda(nes, botao, n):
     for _ in range(n):
         nes.frame(botao)
 
+def entra_no_minigame(nes, sym):
+    """Boota, entra na pizzaria, fala com o Victor ate o fim e cai no minigame."""
+    for _ in range(12): nes.frame()
+    nes.frame(BTN_START)
+    for _ in range(6): nes.frame()
+    for _ in range(200):
+        nes.frame(BTN_RIGHT)
+        if nes.bus.ram[sym["perto"]]:
+            break
+    nes.frame(BTN_B)
+    for _ in range(400): nes.frame()   # digita o dialogo inteiro e espera o B
+    nes.frame(BTN_B)
+    for _ in range(20): nes.frame()    # fecha o balao e carrega o minigame
+
 def main():
     sym = load_labels("build/jogo-labels.txt")
     rom = open(ROM, "rb").read()
@@ -185,17 +199,81 @@ def main():
     d.frame(BTN_B)
     for _ in range(14): d.frame()
     check("B fecha o balao", d.bus.ram[sym["dialogo"]] == 0)
-    # o cenario voltou exatamente ao que era
-    orig = open(ROM, "rb").read()
-    check("o cenario foi restaurado",
-          all(d.bus.vram[0x2000 + 9*32 + 8 + i] != 0 for i in range(16)),
-          "linha do balao repintada")
-    check("ela volta a andar depois", True)
-    for _ in range(20): d.frame(BTN_RIGHT)
-    check("anda de novo com o balao fechado",
-          d.bus.ram[sym["player_x"]] > x_antes)
 
-    print("\n== 7. A musica atravessa as trocas de tela ==")
+    print("\n== 6c. O dialogo acaba e o minigame comeca ==")
+    for _ in range(10): d.frame()
+    check("tela = jogo", d.bus.ram[sym["tela"]] == 2, f"tela={d.bus.ram[sym['tela']]}")
+    check("banco 2 selecionado", d.bus.banco == 2, f"banco {d.bus.banco}")
+    check("fase = jogando", d.bus.ram[sym["jogo_fase"]] == 0)
+    check("placar comeca zerado",
+          d.bus.ram[sym["jogo_pontos"]] == 0 and d.bus.ram[sym["jogo_erros"]] == 0)
+
+    print("\n== 7. O minigame: pegar pizza ==")
+    for _ in range(200):
+        d.frame()
+        if d.bus.ram[sym["pz_ativa"]]:
+            break
+    check("uma pizza nasceu", d.bus.ram[sym["pz_ativa"]] == 1)
+    alvo_x = d.bus.ram[sym["pz_x"]]
+    d.bus.ram[sym["player_x"]] = alvo_x            # poe a Amanda embaixo dela
+    pontos0 = d.bus.ram[sym["jogo_pontos"]]
+    for _ in range(250):
+        d.frame()
+        if d.bus.ram[sym["jogo_pontos"]] > pontos0 or d.bus.ram[sym["pz_ativa"]] == 0:
+            break
+    check("pegar a pizza soma ponto", d.bus.ram[sym["jogo_pontos"]] > pontos0,
+          f"{pontos0} -> {d.bus.ram[sym['jogo_pontos']]}")
+    for _ in range(4): d.frame()
+    DIG_BASE = 96   # ver DIG_BASE em tools/make_jogo.py -- nao e um label, so uma constante
+    dez = d.bus.vram[0x2000 + 26] - DIG_BASE
+    check("o digito do placar foi escrito", 0 <= dez <= 9, f"tile {d.bus.vram[0x2000+26]}")
+
+    print("\n== 8. O minigame: errar pizza ==")
+    erros0 = d.bus.ram[sym["jogo_erros"]]
+    d.bus.ram[sym["player_x"]] = 8                  # bem longe de onde a proxima nasce
+    for _ in range(250):
+        d.frame()
+        if d.bus.ram[sym["jogo_erros"]] > erros0:
+            break
+    check("deixar cair soma erro", d.bus.ram[sym["jogo_erros"]] > erros0,
+          f"{erros0} -> {d.bus.ram[sym['jogo_erros']]}")
+    for _ in range(4): d.frame()
+    erro_tile = d.bus.vram[0x2000 + 32 + 26] - DIG_BASE
+    check("o digito de erros foi escrito", 0 <= erro_tile <= 9,
+          f"tile {d.bus.vram[0x2000+32+26]}")
+
+    print("\n== 9. O minigame: vitoria ao alcancar PONTOS_MIN ==")
+    v = NES(ROM)
+    entra_no_minigame(v, sym)
+    check("entrou no minigame", v.bus.ram[sym["tela"]] == 2)
+    for _ in range(3000):
+        v.frame()
+        if v.bus.ram[sym["pz_ativa"]]:
+            v.bus.ram[sym["player_x"]] = v.bus.ram[sym["pz_x"]]
+        if v.bus.ram[sym["jogo_fase"]] == 1:
+            break
+    check("15 pontos disparam a comemoracao", v.bus.ram[sym["jogo_fase"]] == 1,
+          f"pontos={v.bus.ram[sym['jogo_pontos']]} fase={v.bus.ram[sym['jogo_fase']]}")
+    for _ in range(150): v.frame()
+    check("a comemoracao acaba e o jogo continua",
+          v.bus.ram[sym["jogo_fase"]] == 0, f"fase={v.bus.ram[sym['jogo_fase']]}")
+
+    print("\n== 10. O minigame: derrota ao acumular ERROS_MAX ==")
+    f = NES(ROM)
+    entra_no_minigame(f, sym)
+    f.bus.ram[sym["player_x"]] = 8                   # nunca sai daqui: erra tudo
+    for _ in range(3000):
+        f.frame()
+        if f.bus.ram[sym["jogo_fase"]] == 2:
+            break
+    check("5 erros encerram a rodada", f.bus.ram[sym["jogo_fase"]] == 2,
+          f"erros={f.bus.ram[sym['jogo_erros']]} fase={f.bus.ram[sym['jogo_fase']]}")
+    f.frame(BTN_START)
+    for _ in range(6): f.frame()
+    check("START no fim de jogo volta pro menu", f.bus.ram[sym["tela"]] == 0)
+    check("banco 0 de volta (fim de jogo)", f.bus.banco == 0, f"banco {f.bus.banco}")
+
+    print("\n== 11. A musica atravessa as trocas de tela ==")
     p1 = nes.bus.apu[0x02] | ((nes.bus.apu[0x03] & 7) << 8)
     mudou = False
     for _ in range(40):
@@ -206,7 +284,7 @@ def main():
     check("canais ainda ligados", nes.bus.apu[0x15] & 0x0F == 0x0F)
     check("as notas continuam mudando", mudou)
 
-    print("\n== 8. Estabilidade ==")
+    print("\n== 12. Estabilidade ==")
     for _ in range(3):
         nes.frame(BTN_START)
         for _ in range(20):

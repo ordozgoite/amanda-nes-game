@@ -14,16 +14,22 @@ from make_song import CANAIS, indice, frequencia, CPU_HZ
 ROM = "jogo.nes"
 
 def periodos_esperados():
-    """A sequencia de periodos que cada canal deveria produzir, quadro a quadro."""
+    """A sequencia de periodos que cada canal deveria produzir, quadro a quadro.
+
+    Numa pausa (indice 0) a engine so zera o volume -- @pausa em jogo.s nao
+    escreve $4002/$4003 (nem tri_lo/tri_hi), entao o periodo continua sendo
+    o da ultima nota tocada."""
     trilhas = []
     for c, notas in enumerate(CANAIS):
         linha = []
+        p_atual = 0
         for nome, dur in notas:
             i = indice(nome)
-            f = frequencia(i)
-            div = 32.0 if c == 2 else 16.0
-            p = max(2, min(2047, round(CPU_HZ / (div * f)) - 1))
-            linha += [p] * dur
+            if i != 0:
+                f = frequencia(i)
+                div = 32.0 if c == 2 else 16.0
+                p_atual = max(2, min(2047, round(CPU_HZ / (div * f)) - 1))
+            linha += [p_atual] * dur
         trilhas.append(linha)
     return trilhas
 

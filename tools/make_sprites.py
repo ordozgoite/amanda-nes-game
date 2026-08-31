@@ -138,6 +138,18 @@ VICTOR_FALANDO = list(VICTOR)
 VICTOR_FALANDO[10] = linha(('.',2), ('1',12), ('.',2))
 VICTOR_FALANDO[11] = linha(('.',2), ('1',12), ('.',2))
 
+# ---- a pizza crek que cai no minigame: 16x8, retangular ----
+PIZZA = [
+    linha(('1',16)),                                              # crosta, borda de cima
+    linha(('1',1), ('3',14), ('1',1)),
+    linha(('1',1), ('3',3), ('2',2), ('3',5), ('2',2), ('3',2), ('1',1)),
+    linha(('1',1), ('3',14), ('1',1)),
+    linha(('1',1), ('3',2), ('2',2), ('3',6), ('2',2), ('3',2), ('1',1)),
+    linha(('1',1), ('3',14), ('1',1)),
+    linha(('1',1), ('3',14), ('1',1)),
+    linha(('1',16)),                                              # crosta, borda de baixo
+]
+
 # ---- o aviso de "aperte B", que flutua sobre a cabeca dele ----
 LETRA_B = ["111.", "1..1", "111.", "1..1", "111."]
 
@@ -182,6 +194,8 @@ def build():
     saida.append(encode_tile(falando[4]))      # tile 23: metade direita
     for t in fatiar(botao_b()):                # tiles 24-25: o aviso "B"
         saida.append(encode_tile(t))
+    for t in fatiar(PIZZA):                    # tiles 26-27: a pizza do minigame
+        saida.append(encode_tile(t))
     while len(saida) < 32:                     # duas paginas de 256 bytes
         saida.append(BLANK)
     return b"".join(saida)
@@ -192,4 +206,4 @@ if __name__ == "__main__":
     assert len(d) == 512, len(d)
     open(destino, "wb").write(d)
     print(f"sprites: {destino} ({len(d)} bytes) -- Amanda 0-15, "
-          f"Victor 16-21, boca aberta 22-23, aviso B 24-25")
+          f"Victor 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27")

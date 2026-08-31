@@ -48,7 +48,8 @@ próprio verifica o resultado.
 | `src/jogo.s` | o jogo: máquina de estados, controle, sprites, música, diálogo |
 | `tools/make_chr.py` | fonte 5×7 e o coração da tela de título |
 | `tools/make_scene.py` | a pizzaria, pintada pixel a pixel dentro das regras do NES |
-| `tools/make_sprites.py` | Amanda, Victor sentado, boca falando, aviso "B" |
+| `tools/make_sprites.py` | Amanda, Victor sentado, boca falando, aviso "B", a pizza |
+| `tools/make_jogo.py` | o cenario do minigame (ceu, chao e os digitos do placar) |
 | `tools/make_song.py` | notas → períodos de 11 bits do APU |
 | `tools/nesemu.py` | emulador 6502 + PPU/APU/mapper, usado pelos testes |
 | `tools/apu.py` | sintetiza o som do APU e grava `.wav` |
@@ -101,10 +102,12 @@ Três vozes: arpejo (quadrada 1), harmonia (quadrada 2), baixo (triângulo). A
 engine é chamada uma vez por quadro no NMI e lê pares (nota, duração). O
 envelope de decaimento é o que faz a nota soar tocada, e não como órgão.
 
-O que toca é a **harmonia da introdução de "Amanda" (Boston)** — G e C/G em
-arpejo sobre pedal de sol —, tirada da tablatura, com o andamento (61 BPM)
-conferido no MIDI da música. **A melodia do vocal não está lá**: ela não
-aparece em nenhuma fonte aberta que desse para ler como nota.
+O que toca é a **introdução de "Amanda" (Boston)** — G e C/G em arpejo sobre
+pedal de sol, tirada da tablatura — seguida do **refrão**, transcrito do MIDI
+oficial da música (que também deu o andamento, 61 BPM). O MIDI não tem
+faixa de vocal, mas tem uma faixa de sax alto que funciona como guia de
+melodia; o refrão em si foi achado comparando um preview da faixa com a
+gravação, já que o arquivo não tem marcadores de verso/refrão.
 
 ## Créditos e limites
 

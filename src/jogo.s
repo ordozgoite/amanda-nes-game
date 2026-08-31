@@ -20,10 +20,12 @@ JOY1      = $4016
 ; ---- bancos ----
 BANCO_MENU = 0
 BANCO_CENA = 1
+BANCO_JOGO = 2
 
 ; ---- telas ----
 TELA_MENU = 0
 TELA_CENA = 1
+TELA_JOGO = 2
 
 ; ---- botoes, na ordem em que o controle os entrega ----
 BTN_A     = $80
@@ -73,6 +75,22 @@ ATRIB_1     = $D2   ; $23D2 e $23DA: os 8 bytes de atributo da caixa
 ATRIB_2     = $DA
 ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 
+; ---- minigame: pizzas caindo ----
+; A faixa de captura e generosa de proposito (24px, quase a altura toda do
+; sprite da Amanda) -- e um presente, nao um jogo de reflexo apertado.
+TILE_PIZZA      = 26     ; ver tools/make_sprites.py
+PONTOS_MIN      = 15     ; pontuacao que dispara a comemoracao
+ERROS_MAX       = 5      ; erros que encerram a rodada
+ESPERA_BASE     = 90     ; quadros entre pizzas, no comeco
+ESPERA_MIN      = 30     ; nunca mais rapido que isso
+VEL_BASE        = 1      ; pixels por quadro, no comeco
+VEL_MAX         = 3
+DURACAO_COMEMORA = 90    ; quadros que a comemoracao fica na tela
+CAPTURA_Y_MIN   = CHAO_Y - 4
+CAPTURA_Y_MAX   = CHAO_Y + 24
+PLACAR_PONTOS   = $2000 + 26        ; linha 0, coluna 26-27: dois digitos
+PLACAR_ERROS    = $2000 + 32 + 26   ; linha 1, coluna 26: um digito
+
 ; --------------------------------------------------------------------------
 .segment "HEADER"
     .byte "NES", $1A
@@ -114,6 +132,24 @@ dlg_wait:    .res 1
 dlg_tipo:    .res 1
 perto:       .res 1         ; 1 = a Amanda esta ao alcance do Victor
 oam_attr:    .res 1         ; proprio da OAM: 'tmp' e da musica, que roda no NMI
+abre_jogo:   .res 1         ; 1 = o dialogo fechou; o laco principal troca de tela
+
+; --- minigame: pizzas caindo ---
+; 'jogo_tmp' e o scratch do laco principal (nao pode usar 'ptr'/'tmp':
+; sao da musica, que roda no NMI a qualquer momento).
+jogo_fase:   .res 1         ; 0 jogando, 1 comemorando, 2 fim de jogo
+jogo_pontos: .res 1
+jogo_erros:  .res 1
+jogo_vel:    .res 1
+jogo_espera: .res 1
+jogo_temp:   .res 1
+jogo_venceu: .res 1         ; 1 = ja disparou a comemoracao nesta rodada
+jogo_tmp:    .res 1
+placar_sujo: .res 1
+rng_seed:    .res 1
+pz_x:        .res 3
+pz_y:        .res 3
+pz_ativa:    .res 3
 
 ; --- musica ---
 ch_ptr_lo:   .res 3
@@ -136,6 +172,11 @@ chr_menu:   .incbin "chr_menu.bin"       ; fonte + coracao (8 paginas)
 chr_cena:    .incbin "chr_cena.bin"      ; a Pizza Crek (13 paginas)
 chr_sprites: .incbin "chr_sprites.bin"   ; Amanda e Victor (2 paginas)
 nam_cena:   .incbin "cena.nam"           ; tela + atributos (4 paginas)
+
+.segment "BANK2"
+chr_jogo:         .incbin "chr_jogo.bin"      ; ceu, chao e digitos do placar
+chr_sprites_jogo:  .incbin "chr_sprites.bin"   ; a mesma folha de sprites da cena
+nam_jogo:         .incbin "jogo.nam"          ; tela + atributos (4 paginas)
 
 ; ==========================================================================
 .segment "CODE"
@@ -209,7 +250,12 @@ principal:
     jsr le_controle
 
     lda tela
-    bne @cena
+    beq @menu
+    cmp #TELA_CENA
+    beq @cena
+    jsr atualiza_jogo
+    jmp principal
+@menu:
     jsr atualiza_menu
     jmp principal
 @cena:
@@ -371,6 +417,13 @@ pulsa_coracao:
 ;  Tela: a pizzaria
 ; ==========================================================================
 atualiza_cena:
+    lda abre_jogo            ; o dialogo acabou de fechar nesta rodada?
+    beq @sem_transicao
+    lda #$00
+    sta abre_jogo
+    jmp carrega_jogo
+@sem_transicao:
+
     lda dialogo
     beq @livre
 
@@ -397,6 +450,29 @@ atualiza_cena:
     jmp carrega_menu        ; START volta pro titulo
 
 @anda:
+    jsr move_jogador
+
+    jsr calcula_perto
+    lda perto
+    beq @sprites
+    lda botoes_novos
+    and #BTN_B
+    beq @sprites
+    lda #$01                ; abre o balao
+    sta dialogo
+    lda #$00
+    sta dlg_lin
+
+@sprites:
+    jsr boca_victor
+    jsr monta_oam
+    jmp aviso_b
+
+; --------------------------------------------------------------------------
+;  Anda pra esquerda/direita e alterna o passo -- usado pela cena da
+;  pizzaria e pelo minigame, os dois lugares em que a Amanda caminha.
+; --------------------------------------------------------------------------
+move_jogador:
     lda #$00
     sta andando
 
@@ -430,32 +506,17 @@ atualiza_cena:
     inc player_anim
     lda player_anim
     and #$07                ; troca de passo a cada 8 quadros
-    bne @perto
+    bne @fim
     lda player_frame
     eor #$01
     sta player_frame
-    jmp @perto
+    rts
 @parado:
     lda #$00
     sta player_frame
     sta player_anim
-
-@perto:
-    jsr calcula_perto
-    lda perto
-    beq @sprites
-    lda botoes_novos
-    and #BTN_B
-    beq @sprites
-    lda #$01                ; abre o balao
-    sta dialogo
-    lda #$00
-    sta dlg_lin
-
-@sprites:
-    jsr boca_victor
-    jsr monta_oam
-    jmp aviso_b
+@fim:
+    rts
 
 ; --------------------------------------------------------------------------
 ;  A Amanda esta perto o bastante da mesa?
@@ -594,6 +655,81 @@ carrega_cena:
     jsr aviso_b
 
     lda #TELA_CENA
+    sta tela
+    lda #$00
+    sta carregando
+    jmp liga_tela
+
+; --------------------------------------------------------------------------
+carrega_jogo:
+    lda #$01
+    sta carregando
+    jsr desliga_tela
+
+    lda #BANCO_JOGO
+    jsr troca_banco
+
+    bit PPUSTATUS            ; ceu e chao -> pattern table 1 (fundo)
+    PPU_ADDR $1000
+    lda #<chr_jogo
+    sta ptr
+    lda #>chr_jogo
+    sta ptr+1
+    lda #PAGINAS_JOGO
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $0000           ; Amanda e a pizza -> pattern table 0 (sprites)
+    lda #<chr_sprites_jogo
+    sta ptr
+    lda #>chr_sprites_jogo
+    sta ptr+1
+    lda #2
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $2000           ; a tela pronta, tiles e atributos
+    lda #<nam_jogo
+    sta ptr
+    lda #>nam_jogo
+    sta ptr+1
+    lda #4
+    sta paginas
+    jsr copia_ppu
+
+    lda #<paletas_jogo
+    sta ptr
+    lda #>paletas_jogo
+    sta ptr+1
+    jsr carrega_paletas
+
+    jsr esconde_sprites
+
+    lda #40                  ; a Amanda comeca no mesmo lugar da pizzaria
+    sta player_x
+    lda #CHAO_Y
+    sta player_y
+    lda #$00
+    sta player_dir
+    sta player_frame
+    sta player_anim
+    sta jogo_fase
+    sta jogo_pontos
+    sta jogo_erros
+    sta jogo_venceu
+    sta pz_ativa
+    sta pz_ativa+1
+    sta pz_ativa+2
+    lda #ESPERA_BASE
+    sta jogo_espera
+    lda #VEL_BASE
+    sta jogo_vel
+    lda #$01
+    sta placar_sujo
+
+    jsr atualiza_oam_jogo
+
+    lda #TELA_JOGO
     sta tela
     lda #$00
     sta carregando
@@ -759,6 +895,8 @@ passo_dialogo:
     jsr restaura_atributos
     lda #$00
     sta dialogo
+    lda #$01                ; o laco principal troca de tela no proximo quadro
+    sta abre_jogo
     rts
 
 ; ---- uma linha da moldura (dlg_lin = 0 topo, 7 base, resto meio) ----
@@ -937,6 +1075,291 @@ restaura_atributos:
     rts
 
 ; ==========================================================================
+;  Tela: o minigame -- pizzas caem, a Amanda anda embaixo pra pegar.
+;
+;  E um arcade: depois de alcancar PONTOS_MIN ela ve uma comemoracao (o
+;  "final" -- por enquanto um placeholder, o conteudo de verdade ainda nao
+;  foi decidido), mas o jogo continua dali, tipo o foguete do Tetris. So
+;  acaba quando ela erra ERROS_MAX pizzas.
+; ==========================================================================
+atualiza_jogo:
+    lda jogo_fase
+    cmp #$02                 ; fim de jogo: so espera o START
+    bne @nao_fim
+    lda botoes_novos
+    and #BTN_START
+    beq @so_desenha
+    jmp carrega_menu
+@so_desenha:
+    jmp atualiza_oam_jogo
+
+@nao_fim:
+    cmp #$01                 ; comemorando: pizzas pausadas, so conta o tempo
+    bne @jogando
+    dec jogo_temp
+    bne @so_desenha
+    lda #$00
+    sta jogo_fase
+    jmp atualiza_oam_jogo
+
+@jogando:
+    jsr move_jogador
+    jsr atualiza_pizzas
+    jmp atualiza_oam_jogo
+
+; --------------------------------------------------------------------------
+;  Move as pizzas ativas, spawna novas e detecta captura ou erro.
+;  So roda no laco principal -- nao pode tocar em 'ptr'/'tmp' (da musica).
+; --------------------------------------------------------------------------
+atualiza_pizzas:
+    lda jogo_espera
+    beq @tenta_spawn
+    dec jogo_espera
+    jmp @move
+@tenta_spawn:
+    jsr spawna_pizza
+
+@move:
+    ldx #$00
+@loop:
+    lda pz_ativa, x
+    beq @prox
+    lda pz_y, x
+    clc
+    adc jogo_vel
+    sta pz_y, x
+    cmp #CAPTURA_Y_MIN
+    bcc @prox                ; ainda caindo, nem chegou na faixa
+    cmp #CAPTURA_Y_MAX
+    bcs @sumiu                ; passou da faixa sem ser pega -- erro
+
+    jsr testa_pega
+    bcc @prox                 ; carry limpo = ainda nao encostou nela
+    lda #$00
+    sta pz_ativa, x
+    inc jogo_pontos
+    lda #$01
+    sta placar_sujo
+    jsr checa_vitoria
+    jmp @prox
+@sumiu:
+    lda #$00
+    sta pz_ativa, x
+    inc jogo_erros
+    lda #$01
+    sta placar_sujo
+    jsr checa_derrota
+@prox:
+    inx
+    cpx #$03
+    bne @loop
+    rts
+
+; ---- a pizza x (indice em X) esta sobre a Amanda? carry = 1 se sim ----
+testa_pega:
+    lda player_x
+    clc
+    adc #16
+    sta jogo_tmp
+    lda pz_x, x
+    cmp jogo_tmp
+    bcs @nao                  ; pizza inteira a direita da Amanda
+    lda pz_x, x
+    clc
+    adc #16
+    sta jogo_tmp
+    lda player_x
+    cmp jogo_tmp
+    bcs @nao                  ; Amanda inteira a direita da pizza
+    sec
+    rts
+@nao:
+    clc
+    rts
+
+; ---- acha uma pizza livre e a poe caindo no topo, num x aleatorio ----
+spawna_pizza:
+    ldx #$00
+@procura:
+    lda pz_ativa, x
+    beq @achou
+    inx
+    cpx #$03
+    bne @procura
+    rts                        ; as tres estao ocupadas, tenta de novo depois
+@achou:
+    jsr avanca_rng
+    lda rng_seed
+@mod:
+    cmp #200                   ; reduz pro intervalo 0-199 (poucas voltas)
+    bcc @tem_x
+    sbc #200
+    jmp @mod
+@tem_x:
+    clc
+    adc #ANDA_MIN
+    sta pz_x, x
+    lda #26                    ; nasce logo abaixo da faixa vermelha do topo
+    sta pz_y, x
+    lda #$01
+    sta pz_ativa, x
+
+    ; a dificuldade sobe aos poucos com a pontuacao
+    lda jogo_pontos
+    lsr
+    lsr
+    sta jogo_tmp                ; pontos/4
+
+    lda #ESPERA_BASE
+    sec
+    sbc jogo_tmp
+    cmp #ESPERA_MIN
+    bcs @espera_ok
+    lda #ESPERA_MIN
+@espera_ok:
+    sta jogo_espera
+
+    lda #VEL_BASE
+    clc
+    adc jogo_tmp
+    cmp #VEL_MAX
+    bcc @vel_ok
+    lda #VEL_MAX
+@vel_ok:
+    sta jogo_vel
+    rts
+
+; ---- LFSR de 8 bits; mistura o frame_count pra nunca travar em zero ----
+avanca_rng:
+    lda rng_seed
+    asl
+    bcc @sem_eor
+    eor #$1D
+@sem_eor:
+    eor frame_count
+    sta rng_seed
+    rts
+
+checa_vitoria:
+    lda jogo_venceu
+    bne @fim
+    lda jogo_pontos
+    cmp #PONTOS_MIN
+    bcc @fim
+    lda #$01
+    sta jogo_venceu
+    sta jogo_fase
+    lda #DURACAO_COMEMORA
+    sta jogo_temp
+@fim:
+    rts
+
+checa_derrota:
+    lda jogo_erros
+    cmp #ERROS_MAX
+    bcc @fim
+    lda #$02
+    sta jogo_fase
+@fim:
+    rts
+
+; --------------------------------------------------------------------------
+;  Monta a OAM do minigame: a Amanda (sprites 0-7, o mesmo monta_oam da
+;  pizzaria) e ate 3 pizzas (sprites 8-13, 2 tiles cada).
+; --------------------------------------------------------------------------
+atualiza_oam_jogo:
+    jsr monta_oam
+    ldx #$00
+    ldy #$20                 ; sprite 8 = byte 32
+@loop:
+    lda pz_ativa, x
+    beq @esconde
+    lda pz_y, x
+    sta oam, y
+    sta oam+4, y
+    lda #TILE_PIZZA
+    sta oam+1, y
+    lda #(TILE_PIZZA+1)
+    sta oam+5, y
+    lda #$02                 ; paleta 2 (so a pizza usa, nesta tela)
+    sta oam+2, y
+    sta oam+6, y
+    lda pz_x, x
+    sta oam+3, y
+    clc
+    adc #$08
+    sta oam+7, y
+    jmp @prox
+@esconde:
+    lda #$FF
+    sta oam, y
+    sta oam+4, y
+@prox:
+    tya
+    clc
+    adc #$08
+    tay
+    inx
+    cpx #$03
+    bne @loop
+    rts
+
+; --------------------------------------------------------------------------
+;  Placar: dois digitos de pontos e um de erros, escritos no fundo. So
+;  redesenha quando 'placar_sujo' pede -- roda no NMI, pode usar ptr/tmp
+;  (a musica toca depois, na mesma chamada, nunca ao mesmo tempo).
+; --------------------------------------------------------------------------
+desenha_placar:
+    lda placar_sujo
+    beq @fim
+    lda #$00
+    sta placar_sujo
+
+    jsr converte_pontos       ; X = dezena, A = unidade
+    pha
+    txa
+    clc
+    adc #DIG_BASE
+    tay
+    bit PPUSTATUS
+    PPU_ADDR PLACAR_PONTOS
+    tya
+    sta PPUDATA
+    pla
+    clc
+    adc #DIG_BASE
+    sta PPUDATA
+
+    lda jogo_erros
+    cmp #10
+    bcc @erros_ok
+    lda #9                    ; satura em 9 (nao deveria acontecer)
+@erros_ok:
+    clc
+    adc #DIG_BASE
+    tay                        ; PPU_ADDR usa A -- guarda o tile em Y antes
+    bit PPUSTATUS
+    PPU_ADDR PLACAR_ERROS
+    tya
+    sta PPUDATA
+@fim:
+    rts
+
+; ---- jogo_pontos (0-255) -> dezena (X) e unidade (A), saturado em 99 ----
+converte_pontos:
+    ldx #$00
+    lda jogo_pontos
+@div10:
+    cmp #10
+    bcc @pronto
+    sbc #10
+    inx
+    cpx #10
+    bne @div10
+@pronto:
+    rts
+
+; ==========================================================================
 ;  Video: ligar, desligar, copiar
 ; ==========================================================================
 desliga_tela:
@@ -1010,7 +1433,12 @@ nmi:
     sta OAMDMA
 
     lda tela
-    bne @cena
+    beq @menu
+    cmp #TELA_CENA
+    beq @cena
+    jsr desenha_placar
+    jmp @scroll
+@menu:
     jsr pulsa_coracao
     jmp @scroll
 @cena:
@@ -1216,8 +1644,12 @@ paletas_menu:
 paletas_cena:
     .incbin "cena.pal"
 
+paletas_jogo:
+    .incbin "jogo.pal"
+
 .include "musica.inc"
 .include "dialogo.inc"
+.include "jogo.inc"
 
 .segment "VECTORS"
     .word nmi, reset, irq

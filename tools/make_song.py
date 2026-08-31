@@ -15,7 +15,9 @@ CPU_HZ = 1789773.0
 NOMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 def indice(nome):
-    """'G3' -> indice na tabela (1 = C2). 0 fica reservado pra pausa."""
+    """'G3' -> indice na tabela (1 = C2). 'P' e a pausa reservada (indice 0)."""
+    if nome == "P":
+        return 0
     n, oitava = nome[:-1], int(nome[-1])
     return (oitava - 2) * 12 + NOMES.index(n) + 1
 
@@ -52,7 +54,7 @@ CP = E * 8            # um compasso
 ARPEJO_G  = ["D3", "G3", "B3", "G4", "D3", "G3", "B3", "G4"]
 ARPEJO_CG = ["E3", "G3", "C4", "G4", "E3", "G3", "C4", "G4"]
 
-COMPASSOS = [ARPEJO_G, ARPEJO_CG] * 4          # 8 compassos, ~23 s
+COMPASSOS = [ARPEJO_G, ARPEJO_CG] * 4          # 8 compassos, ~32 s
 
 # canal 0: o arpejo
 canal0 = [(n, E) for compasso in COMPASSOS for n in compasso]
@@ -63,6 +65,61 @@ canal1 = [("B4" if c is ARPEJO_G else "C5", CP) for c in COMPASSOS]
 
 # canal 2: pedal de sol, rearticulado a cada meio compasso pra nao virar orgao
 canal2 = [("G2", CP // 2)] * (len(COMPASSOS) * 2)
+
+# ------------------------------------------------------------------ refrao
+# Depois do arpejo de intro vem o refrao, tirado do MIDI oficial da musica
+# (tools/midi.py le-lo: 15 faixas, bateria + baixo + guitarras + uma faixa
+# de sax alto que funciona como guia de melodia porque a musica nao tem
+# vocal gravado). O refrao comeca em 1:38 (98.3s) -- confirmado de ouvido
+# depois de eu sintetizar a faixa da melodia crua e comparar com o Victor.
+# Uma passada inteira do refrao dura ~23.6s; ele se repete em seguida
+# (faixa do violao em arpejo volta pro mesmo acorde de sol em 121.89s),
+# entao uma passada so ja basta pro loop -- repetir de novo seria repetir
+# o loop de um loop.
+#
+# canal 0 (melodia, faixa da sax): duracao de cada nota = tempo ate a
+# proxima comecar, pra ficar legato; vao real (> 0.3s) virou pausa "P".
+# canal 1 (acordes, tirados da faixa do violao em arpejo por baixo da
+# melodia: sol, mi menor, si menor, do, sol/re, la menor, sol/re, re):
+# um pad na fundamental de cada acorde, rearticulado na metade — mesma
+# ideia do pedal do canal 2 acima, pra nao virar orgao.
+# canal 2 (baixo, faixa do baixo): uma oitava acima do MIDI original —
+# a oitava 1 fica fora da faixa de notas que este motor sabe tocar
+# (comeca em C2, ver N_NOTAS).
+#
+# Duracao em quadros: arredondada pra grade de semicolcheia (15 quadros,
+# metade do E do intro, o suficiente pra cobrir as notas mais curtas).
+MELODIA_REFRAO = [
+    ("A#3", 60), ("P", 45), ("G3", 15), ("D#4", 15), ("E4", 15), ("E4", 15),
+    ("E4", 75), ("D4", 15), ("A#3", 45), ("P", 45), ("G3", 15), ("D#4", 15),
+    ("E4", 15), ("E4", 15), ("E4", 45), ("D4", 15), ("C#4", 15), ("A#3", 120),
+    ("P", 90), ("B3", 30), ("D#4", 15), ("E4", 15), ("E4", 15), ("D#4", 45),
+    ("E4", 30), ("G4", 15), ("G#3", 15), ("G3", 15), ("F#3", 60), ("E3", 15),
+    ("A3", 45), ("C4", 15), ("B3", 60), ("P", 45), ("B3", 15), ("B3", 45),
+    ("B3", 15), ("A#3", 15), ("G#3", 105), ("P", 120),
+]
+
+CHORD_REFRAO = [
+    ("G4", 180), ("G4", 180),
+    ("E4", 60), ("E4", 60),
+    ("B4", 120), ("B4", 120),
+    ("C4", 60), ("C4", 60),
+    ("G4", 60), ("G4", 60),
+    ("A4", 60), ("A4", 60),
+    ("G4", 60), ("G4", 60),
+    ("D4", 120), ("D4", 120),
+]
+
+BAIXO_REFRAO = [
+    ("G2", 225), ("D2", 15), ("G2", 105), ("D2", 15), ("E2", 120), ("B2", 105),
+    ("F#2", 15), ("B2", 60), ("F#3", 15), ("E3", 15), ("D3", 15), ("B2", 15),
+    ("C3", 105), ("C3", 15), ("B2", 30), ("B2", 75), ("B2", 15), ("A2", 120),
+    ("G2", 90), ("D3", 15), ("E3", 15), ("D3", 105), ("D3", 15), ("D2", 120),
+]
+
+canal0 += MELODIA_REFRAO
+canal1 += CHORD_REFRAO
+canal2 += BAIXO_REFRAO
 
 CANAIS = [canal0, canal1, canal2]
 
