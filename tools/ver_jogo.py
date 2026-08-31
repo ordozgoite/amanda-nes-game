@@ -43,12 +43,18 @@ for _ in range(6):
 render(nes).save("build/jogo-5-fala-amanda.png")
 print("build/jogo-5-fala-amanda.png")
 
-for _ in range(400):             # digita o dialogo inteiro
+for _ in range(300):             # digita a fala do Victor inteira
     nes.frame()
 render(nes).save("build/jogo-6-fala-fim.png")
 print("build/jogo-6-fala-fim.png")
 
-nes.frame(BTN_B)
+nes.frame(BTN_B)                 # fecha a caixa dele, abre a da Amanda
+for _ in range(200):
+    nes.frame()
+render(nes).save("build/jogo-6b-fala-amanda.png")
+print("build/jogo-6b-fala-amanda.png")
+
+nes.frame(BTN_B)                 # fecha a caixa dela -> carrega o minigame
 for _ in range(20):
     nes.frame()
 render(nes).save("build/jogo-7-minigame.png")

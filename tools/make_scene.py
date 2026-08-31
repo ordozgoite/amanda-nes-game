@@ -338,17 +338,22 @@ def para_tiles(texto):
         else: raise ValueError(f"sem tile pra {ch!r}")
     return fora
 
-# O que o Victor fala. Quebrado em linhas de no maximo 14 caracteres,
-# que e a largura util do balao.
-FALA = [
+# O dialogo tem duas caixas de bala -- o Victor fala primeiro (a dele fecha
+# antes da dela abrir, perto de onde a Amanda esta parada; ver caixa_pag_tab
+# em src/jogo.s). Cada linha tem no maximo 14 caracteres, a largura util
+# do balao.
+FALA_VICTOR = [
     "NOSSA! VOC\xCA",
     "EST\xC1 MUITO",
     "BONITA!",
     "EU VIM DE",
     "CROCS RSRS",
+]
+FALA_AMANDA = [
     "SENTA AQUI",
     "DO MEU LADO!",
 ]
+FALA = FALA_VICTOR + FALA_AMANDA
 
 # ================================================================== saida
 
@@ -449,10 +454,11 @@ def main():
                "fala_hi:  .byte " + ", ".join(f">fala{n}" for n in range(len(FALA))), ""]
     linhas += [f"; quantas paginas de 256 bytes a CHR da cena ocupa -- o assembly",
                f"; le daqui em vez de ter o numero escrito na mao",
-               f"PAGINAS_CENA = {paginas}",
-               f"N_FALAS      = {len(FALA)}",
-               f"TILE_BRANCO  = ${DLG_BRANCO:02X}",
-               f"TILE_BORDA   = ${DLG_BORDA:02X}", ""]
+               f"PAGINAS_CENA  = {paginas}",
+               f"N_FALAS       = {len(FALA)}",
+               f"N_FALA_VICTOR = {len(FALA_VICTOR)}   ; a partir daqui, fala e da caixa da Amanda",
+               f"TILE_BRANCO   = ${DLG_BRANCO:02X}",
+               f"TILE_BORDA    = ${DLG_BORDA:02X}", ""]
     open("build/dialogo.inc", "w").write("\n".join(linhas))
     print(f"build/dialogo.inc  ({len(FALA)} linhas de fala)")
 

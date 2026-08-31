@@ -16,7 +16,7 @@ def anda(nes, botao, n):
         nes.frame(botao)
 
 def entra_no_minigame(nes, sym):
-    """Boota, entra na pizzaria, fala com o Victor ate o fim e cai no minigame."""
+    """Boota, entra na pizzaria, passa pelas duas caixas de dialogo e cai no minigame."""
     for _ in range(12): nes.frame()
     nes.frame(BTN_START)
     for _ in range(6): nes.frame()
@@ -25,9 +25,11 @@ def entra_no_minigame(nes, sym):
         if nes.bus.ram[sym["perto"]]:
             break
     nes.frame(BTN_B)
-    for _ in range(400): nes.frame()   # digita o dialogo inteiro e espera o B
+    for _ in range(300): nes.frame()   # digita a fala do Victor e espera o B
+    nes.frame(BTN_B)                    # fecha a caixa dele, abre a da Amanda
+    for _ in range(200): nes.frame()   # digita a fala dela e espera o B
     nes.frame(BTN_B)
-    for _ in range(20): nes.frame()    # fecha o balao e carrega o minigame
+    for _ in range(20): nes.frame()    # fecha a caixa dela e carrega o minigame
 
 def main():
     sym = load_labels("build/jogo-labels.txt")
@@ -195,10 +197,31 @@ def main():
     letras = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(5)]
     check("a primeira linha do balao esta na tela", letras == [221, 222, 226, 226, 208],
           f"tiles {letras}")
+    check("essa e a caixa do Victor", d.bus.ram[sym["dlg_box"]] == 0)
 
     d.frame(BTN_B)
     for _ in range(14): d.frame()
-    check("B fecha o balao", d.bus.ram[sym["dialogo"]] == 0)
+    check("B fecha a caixa do Victor e abre a da Amanda",
+          d.bus.ram[sym["dlg_box"]] == 1 and d.bus.ram[sym["dialogo"]] in (1, 2),
+          f"dlg_box={d.bus.ram[sym['dlg_box']]} dialogo={d.bus.ram[sym['dialogo']]}")
+
+    # a boca dele nao pode mexer: agora quem fala e a Amanda
+    bocas2 = set()
+    for _ in range(60):
+        d.frame()
+        bocas2.add(d.bus.oam[37])
+    check("a boca dele NAO mexe na fala da Amanda", bocas2 == {17}, str(sorted(bocas2)))
+
+    for _ in range(150): d.frame()
+    check("a fala da Amanda termina", d.bus.ram[sym["dialogo"]] == 3)
+    # a caixa dela fica na linha 16 (uma pagina abaixo da do Victor)
+    letras2 = [d.bus.vram[0x2000 + 17*32 + 9 + i] for i in range(5)]
+    check("a fala da Amanda esta na tela: S E N T A",
+          letras2 == [226, 212, 221, 227, 208], f"tiles {letras2}")
+
+    d.frame(BTN_B)
+    for _ in range(14): d.frame()
+    check("B fecha a caixa da Amanda", d.bus.ram[sym["dialogo"]] == 0)
 
     print("\n== 6c. O dialogo acaba e o minigame comeca ==")
     for _ in range(10): d.frame()
@@ -241,6 +264,32 @@ def main():
     erro_tile = d.bus.vram[0x2000 + 32 + 26] - DIG_BASE
     check("o digito de erros foi escrito", 0 <= erro_tile <= 9,
           f"tile {d.bus.vram[0x2000+32+26]}")
+
+    print("\n== 8b. O minigame: pizzas nao saltam de extremo a extremo ==")
+    s = NES(ROM)
+    entra_no_minigame(s, sym)
+    SALTO_MAX = 80   # ver SALTO_MAX em src/jogo.s -- nao e um label, so uma constante
+    ativa_antes = [0, 0, 0]
+    nascimentos = []
+    for quadro in range(6000):
+        # pega tudo que aparece, pra rodada nunca acabar por erro demais
+        for i in range(3):
+            if s.bus.ram[sym["pz_ativa"] + i]:
+                s.bus.ram[sym["player_x"]] = s.bus.ram[sym["pz_x"] + i]
+        s.frame()
+        for i in range(3):
+            ativa = s.bus.ram[sym["pz_ativa"] + i]
+            if ativa and not ativa_antes[i]:
+                nascimentos.append((quadro, s.bus.ram[sym["pz_x"] + i]))
+            ativa_antes[i] = ativa
+        if len(nascimentos) >= 25:
+            break
+    saltos = [abs(nascimentos[i][1] - nascimentos[i-1][1]) for i in range(1, len(nascimentos))]
+    check("pizzas suficientes nasceram pro teste valer", len(nascimentos) >= 15,
+          f"{len(nascimentos)} nascimentos")
+    check(f"nenhum salto passou de {SALTO_MAX}px", saltos and max(saltos) <= SALTO_MAX,
+          f"maior salto: {max(saltos) if saltos else '?'}px, x's: "
+          f"{[x for _, x in nascimentos]}")
 
     print("\n== 9. O minigame: vitoria ao alcancar PONTOS_MIN ==")
     v = NES(ROM)

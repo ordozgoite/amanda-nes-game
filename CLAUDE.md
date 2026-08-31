@@ -73,6 +73,11 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   laco principal muda o estado (pontos, fase) num quadro; so a NMI seguinte
   desenha. Testes que leem a tela logo depois de detectar a mudanca no RAM
   precisam esperar mais um `frame()`, senao veem o valor antigo.
+- **`ADC` pode estourar 255 e o `CMP` seguinte nao percebe.** No clamp do x
+  da pizza, `base + delta` as vezes passava de 255, o acumulador dava a
+  volta, e o `cmp` de teto comparava o valor ja embrulhado -- que parecia
+  pequeno, entao passava no teste. Depois de somar, cheque o carry (`bcs`)
+  antes do `cmp`: se estourou 255, ja passou de qualquer teto menor.
 
 ## Estado atual
 
