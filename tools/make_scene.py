@@ -22,10 +22,14 @@ PALETAS = [
 ]
 
 # paletas de sprite da Amanda -- exportadas porque o minigame (make_jogo.py)
-# reaproveita as mesmas, pra ela ficar identica nas duas cenas
+# reaproveita as mesmas, pra ela ficar identica nas duas cenas. PERNAS so
+# fica exportada por causa do minigame: na pizzaria as pernas da Amanda
+# passaram a reaproveitar a paleta do TRONCO (ver make_sprites.py), o que
+# libertou a paleta 3 pro torso do Victor.
 PALETA_SPRITE_CABECA = [0x0F, 0x0F, 0x36, 0x24]   # cabelo preto, laco rosa
 PALETA_SPRITE_TRONCO = [0x0F, 0x0F, 0x36, 0x0F]   # vestido preto
-PALETA_SPRITE_VICTOR = [0x0F, 0x0F, 0x36, 0x10]   # cabelo preto, camisa cinza
+PALETA_SPRITE_VICTOR = [0x0F, 0x0F, 0x36, 0x10]   # cabeca: cabelo preto, camisa cinza
+PALETA_SPRITE_VICTOR_TORSO = [0x0F, 0x3C, 0x36, 0x10]   # torso: o logo da Nike, ciano
 PALETA_SPRITE_PERNAS = [0x0F, 0x0F, 0x0F, 0x0F]   # vestido, sapatos, cabelo -- tudo preto
 
 px   = [[0] * W for _ in range(H)]        # indice de cor por pixel
@@ -463,11 +467,12 @@ def main():
     pal = bytearray()
     for p in PALETAS:
         pal += bytes(p)
-    # paletas de sprite (ver tools/make_sprites.py)
+    # paletas de sprite (ver tools/make_sprites.py). Slot 3 e o torso do
+    # Victor -- as pernas da Amanda agora reaproveitam o slot 1 (tronco).
     pal += bytes(PALETA_SPRITE_CABECA)
     pal += bytes(PALETA_SPRITE_TRONCO)
     pal += bytes(PALETA_SPRITE_VICTOR)
-    pal += bytes(PALETA_SPRITE_PERNAS)
+    pal += bytes(PALETA_SPRITE_VICTOR_TORSO)
     open("build/cena.pal", "wb").write(bytes(pal[:32]))
     open("build/cena.nam", "wb").write(bytes(nametable) + bytes_de_atributo())
 

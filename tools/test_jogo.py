@@ -106,12 +106,13 @@ def main():
     victor = [nes.bus.oam[i:i+4] for i in range(32, 56, 4)]
     check("Amanda tem 16x32 (4 tiles de altura)",
           sorted({s[0] for s in amanda}) == [192, 200, 208, 216])
-    # cabeca, tronco e pernas usam paletas diferentes -- e o que faz o
-    # cabelo escurecer de cima pra baixo e o jeans nao virar blusa
-    check("paletas por linha de tile", [s[2] & 3 for s in amanda] == [0,0,1,3,0,0,1,3],
+    # cabeca tem paleta propria (cabelo/laco); tronco e pernas dividem a
+    # mesma (as pernas nao precisam de cor extra, e uma so ja da conta)
+    check("paletas por linha de tile", [s[2] & 3 for s in amanda] == [0,0,1,1,0,0,1,1],
           str([s[2] & 3 for s in amanda]))
+    # cabeca dele = paleta 2, torso = paleta 3 (onde mora o logo da camisa)
     check("Victor sentado, parado a mesa",
-          all(s[2] & 3 == 2 for s in victor) and {s[3] for s in victor} == {176, 184})
+          [s[2] & 3 for s in victor] == [2,2,3,2,2,3] and {s[3] for s in victor} == {176, 184})
     check("tiles dos personagens na pattern table 0",
           sum(1 for i in range(0x1000) if nes.bus.vram[i]) > 100)
 

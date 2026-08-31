@@ -935,7 +935,7 @@ oam_victor:
     adc #TILE_VICTOR
     sta oam+1, y
 
-    lda #$02                ; paleta 2
+    lda vic_pal, x           ; cabeca = paleta 2, torso = paleta 3 (logo)
     sta oam+2, y
 
     lda #VICTOR_X
@@ -1969,10 +1969,14 @@ musica_offset: .byte 0, 3     ; onde cada musica comeca em fluxo_lo/hi (3 canais
 ama_dx:      .byte 0, 0, 0, 0,  8, 8, 8, 8
 ama_dx_esp:  .byte 8, 8, 8, 8,  0, 0, 0, 0
 ama_dy:      .byte 0, 8, 16, 24, 0, 8, 16, 24
-ama_pal:     .byte 0, 0, 1, 3,  0, 0, 1, 3
-; Victor: 6 tiles
+; pernas reaproveitam a paleta do tronco (1) -- ver make_sprites.py sobre
+; por que elas nao precisam mais de paleta propria
+ama_pal:     .byte 0, 0, 1, 1,  0, 0, 1, 1
+; Victor: 6 tiles (cabeca, cabeca, TORSO, cabeca, cabeca, TORSO -- ver fatiar
+; em make_sprites.py). O torso usa a paleta 3, com o logo da Nike ciano.
 vic_dx:      .byte 0, 0, 0,  8, 8, 8
 vic_dy:      .byte 0, 8, 16, 0, 8, 16
+vic_pal:     .byte 2, 2, 3, 2, 2, 3
 
 ; pecas da moldura, por tipo de linha: topo, meio, base
 borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5
