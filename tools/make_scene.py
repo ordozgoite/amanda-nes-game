@@ -418,7 +418,7 @@ def para_tiles(texto):
 GRUPOS_FALA = [
     (0, ["NOSSA... VOC\xCA", "ESTA MUITO", "BONITA."]),
     (0, ["DESCULPA VIR", "DE CROCS,", "RSRS."]),
-    (1, ["VEM, SENTA", "AQUI DO MEU", "LADO!"]),
+    (1, ["VEM, SENTA", "AQUI DO MEU", "LADO!"]),   # PARTE_SENTAR: ver main()
     (0, ["ME CONTA, O", "QUE VOC\xCA GOSTA", "DE FAZER?"]),
     (1, ["EU SOU", "PROFESSORA,", "PEDAGOGA... E", "TO FAZENDO", "PSICOLOGIA."]),
     (1, ["E VOC\xCA?"]),
@@ -432,6 +432,11 @@ GRUPOS_FALA = [
 ]
 FALANTE_GRUPO = [falante for falante, _ in GRUPOS_FALA]
 FALA = [linha for _, grupo in GRUPOS_FALA for linha in grupo]
+
+# depois que ESSA parte fecha (o convite "vem, senta aqui do meu lado!"),
+# o assembly anima a Amanda indo se sentar antes de abrir a proxima caixa
+# -- ver PARTE_SENTAR/senta_fase em src/jogo.s
+PARTE_SENTAR = 2
 
 # ================================================================== saida
 
@@ -552,6 +557,7 @@ def main():
                f"PAGINAS_CENA  = {paginas}",
                f"N_FALAS       = {len(FALA)}",
                f"N_PARTES      = {len(GRUPOS_FALA)}",
+               f"PARTE_SENTAR  = {PARTE_SENTAR}",
                f"TILE_BRANCO   = ${DLG_BRANCO:02X}",
                f"TILE_BORDA    = ${DLG_BORDA:02X}", ""]
     open("build/dialogo.inc", "w").write("\n".join(linhas))

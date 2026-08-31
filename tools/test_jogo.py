@@ -265,6 +265,20 @@ def main():
         if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
             coracao = d.bus.vram[0x2000 + (linha + 1)*32 + 9 + 6]
             check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
+        if parte == 3:   # a primeira parte depois do convite pra sentar
+            check("a animacao de sentar terminou: ela esta sentada",
+                  d.bus.ram[sym["amanda_sentada"]] == 1)
+            check("parada no x do banco, do lado do Victor",
+                  d.bus.ram[sym["player_x"]] == 200, f"x={d.bus.ram[sym['player_x']]}")
+            check("na mesma altura da mesa do Victor",
+                  d.bus.ram[sym["player_y"]] == 152, f"y={d.bus.ram[sym['player_y']]}")
+            # sentada: so cabeca+tronco (sprites 0,1,2,4,5,6); pernas
+            # (sprites 3 e 7) escondidas, como as do Victor por tras da mesa
+            check("as pernas dela ficam escondidas, sentada",
+                  d.bus.oam[3*4] >= 0xEF and d.bus.oam[7*4] >= 0xEF,
+                  f"y3={d.bus.oam[12]} y7={d.bus.oam[28]}")
+            check("cabeca e tronco continuam visiveis, sentada",
+                  d.bus.oam[0] < 0xEF and d.bus.oam[2*4] < 0xEF)
         d.frame(BTN_B)
         for _ in range(14): d.frame()
     check("as bocas mexeram nas partes de cada um", all(a_boca_mexeu.values()),

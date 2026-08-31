@@ -96,6 +96,17 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   aguenta 60), entao "os proximos 2 quadros batem" pode travar no MEIO da
   nota, nao no comeco dela -- e a partir dali tudo desalinha. So vale
   comparar o laco inteiro contra o esperado (ver `test_musica.py`).
+- **Sair de um estado do NMI pra outro sistema precisa zerar a variavel de
+  estado, nao so setar a do sistema novo.** A animacao de sentar (depois de
+  `PARTE_SENTAR`) saia de `@fechando` pra ligar `senta_fase` sem zerar
+  `dialogo` (que ainda valia 4). Resultado: `passo_dialogo` reentrava em
+  `@fechando` TODO NMI, e essa reentrada forcava `senta_fase` de volta pra 1
+  a cada quadro -- a animacao nunca passava do primeiro passo (andar ate o
+  x), porque o proprio NMI desfazia o progresso do quadro anterior antes do
+  laco principal conseguir avancar pra fase seguinte. Sintoma enganoso: o
+  valor lido entre quadros parecia estavel (sempre a mesma fase), porque a
+  leitura via teste so via o resultado JA sobrescrito pelo NMI seguinte --
+  so apareceu de verdade imprimindo o estado quadro a quadro.
 
 ## Estado atual
 

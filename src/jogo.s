@@ -64,6 +64,7 @@ CHAO_Y      = 192
 TILE_VICTOR = 16
 VICTOR_X    = 176   ; atras da mesa, com a bandeja na frente dele
 VICTOR_Y    = 152
+AMANDA_SENTADA_X = 200   ; do lado direito dele, no mesmo banco da mesa
 PERTO_MIN   = 152   ; faixa de x em que o aviso aparece
 PERTO_MAX   = 201
 TILE_BOCA_E = 22    ; Victor de boca aberta
@@ -155,6 +156,10 @@ dlg_parte:   .res 1         ; qual parte do dialogo (0, 1, 2...), indexa fala/fa
 perto:       .res 1         ; 1 = a Amanda esta ao alcance do Victor
 oam_attr:    .res 1         ; proprio da OAM: 'tmp' e da musica, que roda no NMI
 abre_jogo:   .res 1         ; 1 = o dialogo fechou; o laco principal troca de tela
+
+; --- animacao de sentar, disparada depois de PARTE_SENTAR (ver passo_dialogo) ---
+senta_fase:    .res 1       ; 0 fora, 1 andando ate o x do banco, 2 subindo ate a mesa
+amanda_sentada:.res 1       ; 1 = desenha ela sentada (cabeca+tronco, sem pernas)
 
 ; --- minigame: pizzas caindo ---
 ; 'jogo_tmp' e o scratch do laco principal (nao pode usar 'ptr'/'tmp':
@@ -509,6 +514,11 @@ atualiza_cena:
     jmp carrega_jogo
 @sem_transicao:
 
+    lda senta_fase            ; animando ate o banco? nao le botao nenhum
+    beq @sem_animacao
+    jmp atualiza_senta
+@sem_animacao:
+
     lda dialogo
     beq @livre
 
@@ -525,7 +535,7 @@ atualiza_cena:
     sta dlg_lin
 @so_sprites:
     jsr boca_victor
-    jsr monta_oam
+    jsr desenha_amanda
     jsr boca_amanda
     jmp aviso_b
 
@@ -554,7 +564,7 @@ atualiza_cena:
 
 @sprites:
     jsr boca_victor
-    jsr monta_oam
+    jsr desenha_amanda
     jsr boca_amanda
     jmp aviso_b
 
@@ -710,6 +720,136 @@ boca_amanda:
     rts
 
 ; --------------------------------------------------------------------------
+;  A animacao de sentar: anda ate o x do banco do lado do Victor, sobe ate
+;  a altura da mesa, e so entao devolve o dialogo pra proxima parte. Sem
+;  isso, so trocar de sprite deixaria ela flutuando no meio do salao ou do
+;  tamanho errado -- ela precisa MESMO se mover ate a mesa antes de sentar.
+;  Nao le botao nenhum: e uma cutscene curta, nao um trecho jogavel.
+; --------------------------------------------------------------------------
+atualiza_senta:
+    lda senta_fase
+    cmp #$01
+    beq @andando
+    cmp #$02
+    beq @subindo
+    jmp avanca_apos_sentar    ; fase 3: a subida terminou, volta pro dialogo
+
+@andando:
+    lda player_x
+    cmp #AMANDA_SENTADA_X
+    beq @chegou_x
+    bcc @anda_direita
+    dec player_x
+    lda #$01
+    sta player_dir
+    jmp @passo
+@anda_direita:
+    inc player_x
+    lda #$00
+    sta player_dir
+@passo:
+    inc player_anim
+    lda player_anim
+    and #$07                 ; troca de passo a cada 8 quadros, igual andar normal
+    bne @desenha
+    lda player_frame
+    eor #$01
+    sta player_frame
+    jmp @desenha
+@chegou_x:
+    lda #$02                 ; parou de andar: agora sobe ate a mesa
+    sta senta_fase
+    lda #$00
+    sta player_frame
+    sta player_anim
+    jmp @desenha
+
+@subindo:
+    lda player_y
+    cmp #VICTOR_Y
+    beq @chegou_y
+    dec player_y
+    jmp @desenha
+@chegou_y:
+    lda #$01
+    sta amanda_sentada        ; a partir de agora ela desenha sentada
+    lda #$03
+    sta senta_fase
+
+@desenha:
+    jsr boca_victor
+    jsr desenha_amanda
+    jsr boca_amanda
+    rts
+
+; ---- volta pro dialogo na parte seguinte a PARTE_SENTAR ----
+avanca_apos_sentar:
+    lda #$00
+    sta senta_fase
+    inc dlg_parte
+    ldx dlg_parte
+    lda falante_tab, x
+    sta dlg_box
+    lda #$01
+    sta dialogo
+    lda #$00
+    sta dlg_lin
+    rts
+
+; ---- desenha a Amanda andando ou sentada, conforme a fase atual ----
+desenha_amanda:
+    lda amanda_sentada
+    bne @sentada
+    jmp monta_oam
+@sentada:
+    jmp monta_oam_sentada
+
+; --------------------------------------------------------------------------
+;  Amanda sentada: cabeca + tronco, sem pernas -- exatamente como o Victor
+;  (a mesa esconde o resto). Nao precisou de nenhum desenho novo: sao os
+;  MESMOS tiles 0,1,2,4,5,6 do sprite de andar (fatiar em make_sprites.py
+;  ja corta cabeca e tronco em tiles separados das pernas), so que sem
+;  nunca trocar de quadro nem espelhar -- ela fica de frente pra mesa.
+; --------------------------------------------------------------------------
+monta_oam_sentada:
+    ldx #$00
+    ldy #$00
+@loop:
+    cpx #$03                 ; tiles 3 e 7 sao as pernas -- escondidos
+    beq @esconde
+    cpx #$07
+    beq @esconde
+
+    lda player_y
+    clc
+    adc ama_dy, x
+    sta oam, y
+
+    txa                      ; tile_base sempre 0: sentada nao tem passo
+    sta oam+1, y
+
+    lda ama_pal, x
+    sta oam+2, y             ; nunca espelha -- sentada de frente pra mesa
+
+    lda ama_dx, x
+    clc
+    adc player_x
+    sta oam+3, y
+    jmp @prox
+@esconde:
+    lda #$FF
+    sta oam, y
+@prox:
+    iny
+    iny
+    iny
+    iny
+    inx
+    cpx #$08
+    bne @loop
+    rts
+
+; --------------------------------------------------------------------------
 carrega_cena:
     lda #$01
     sta carregando
@@ -768,6 +908,8 @@ carrega_cena:
     sta player_anim
     sta dialogo
     sta perto
+    sta senta_fase
+    sta amanda_sentada
     jsr monta_oam
     jsr aviso_b
 
@@ -1018,6 +1160,15 @@ passo_dialogo:
     cmp #$08
     bcc @fim
     jsr restaura_atributos
+    lda dlg_parte
+    cmp #PARTE_SENTAR
+    bne @sem_sentar
+    lda #$00                  ; era o convite pra sentar: anima em vez de
+    sta dialogo                ; abrir a proxima caixa direto. Zerar 'dialogo'
+    lda #$01                   ; e essencial -- sem isso o passo_dialogo reentra
+    sta senta_fase             ; em @fechando todo NMI (dialogo ainda seria 4) e
+    rts                        ; forca senta_fase de volta pra 1 pra sempre.
+@sem_sentar:
     inc dlg_parte
     lda dlg_parte
     cmp #N_PARTES
