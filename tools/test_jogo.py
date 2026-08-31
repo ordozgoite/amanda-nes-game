@@ -11,13 +11,17 @@ BTN_B, BTN_START, BTN_LEFT, BTN_RIGHT = 0x02, 0x08, 0x40, 0x80
 POS_VICTOR = 0x2000 + 12 * 32 + 13
 POS_AMANDA = 0x2000 + 17 * 32 + 13
 TILE_AMA_BOCA_E = 28   # ver TILE_AMA_BOCA_E em src/jogo.s -- nao e um label
+DLG_BASE = 204          # ver DLG_BASE em tools/make_scene.py -- nao e um label
+# falante de cada uma das 13 partes do dialogo (0=Victor, 1=Amanda) --
+# espelha FALANTE_GRUPO em tools/make_scene.py
+FALANTE_TAB = [0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1]
 
 def anda(nes, botao, n):
     for _ in range(n):
         nes.frame(botao)
 
 def entra_no_minigame(nes, sym):
-    """Boota, entra na pizzaria, passa pelas tres partes do dialogo e cai no minigame."""
+    """Boota, entra na pizzaria, passa por todas as partes do dialogo e cai no minigame."""
     for _ in range(12): nes.frame()
     nes.frame(BTN_START)
     for _ in range(70): nes.frame()    # o respiro pro plin, antes da cena carregar
@@ -25,14 +29,11 @@ def entra_no_minigame(nes, sym):
         nes.frame(BTN_RIGHT)
         if nes.bus.ram[sym["perto"]]:
             break
-    nes.frame(BTN_B)
-    for _ in range(150): nes.frame()   # Victor, parte 1 ("...bonita!")
-    nes.frame(BTN_B)                    # fecha, abre a parte 2 (ainda o Victor)
-    for _ in range(150): nes.frame()   # Victor, parte 2 ("crocs rsrs")
-    nes.frame(BTN_B)                    # fecha a dele, abre a da Amanda
-    for _ in range(200): nes.frame()   # a fala dela inteira
-    nes.frame(BTN_B)
-    for _ in range(20): nes.frame()    # fecha a caixa dela e carrega o minigame
+    nes.frame(BTN_B)                    # abre a primeira caixa
+    for _ in range(len(FALANTE_TAB)):
+        for _ in range(400): nes.frame()   # digita a parte inteira e espera o B
+        nes.frame(BTN_B)                    # fecha essa / abre a proxima (ou termina)
+    for _ in range(20): nes.frame()    # carrega o minigame
 
 def main():
     sym = load_labels("build/jogo-labels.txt")
@@ -219,12 +220,13 @@ def main():
           f"${d.bus.apu[0x0C]:02X}")
     check("a boca para de mexer", d.bus.oam[37] == 17)
     # a etiqueta "VICTOR:" (fonte mini) fica na linha 9, uma acima da mensagem
+    NOME_VICTOR = [255, 249, 247, 254, 252, 253, 245]
+    NOME_AMANDA = [246, 250, 246, 251, 248, 246, 245]
     nome = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(7)]
-    check("a etiqueta VICTOR: esta na tela", nome == [255, 249, 247, 254, 252, 253, 245],
-          f"tiles {nome}")
+    check("a etiqueta VICTOR: esta na tela", nome == NOME_VICTOR, f"tiles {nome}")
     # o texto foi mesmo escrito na tela: primeira linha comeca com N O S S A
     letras = [d.bus.vram[0x2000 + 10*32 + 9 + i] for i in range(5)]
-    check("a primeira linha do balao esta na tela", letras == [219, 220, 224, 224, 206],
+    check("a primeira linha do balao esta na tela", letras == [217, 218, 222, 222, 204],
           f"tiles {letras}")
     check("essa e a caixa do Victor", d.bus.ram[sym["dlg_box"]] == 0)
 
@@ -236,46 +238,38 @@ def main():
           f"dlg_box={d.bus.ram[sym['dlg_box']]} parte={d.bus.ram[sym['dlg_parte']]} "
           f"dialogo={d.bus.ram[sym['dialogo']]}")
 
-    for _ in range(150): d.frame()
-    check("a parte 2 do Victor termina", d.bus.ram[sym["dialogo"]] == 3)
-    nome_p2 = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(7)]
-    check("ainda e a etiqueta VICTOR: (mesma caixa)",
-          nome_p2 == [255, 249, 247, 254, 252, 253, 245], f"tiles {nome_p2}")
-    letras_p2 = [d.bus.vram[0x2000 + 10*32 + 9 + i] for i in range(9)]
-    check("a parte 2 esta na tela: EU VIM DE",
-          letras_p2 == [210, 226, 232, 227, 214, 218, 232, 209, 210],
-          f"tiles {letras_p2}")
-
-    d.frame(BTN_B)
-    for _ in range(14): d.frame()
-    check("B fecha a parte 2 do Victor e abre a da Amanda",
-          d.bus.ram[sym["dlg_box"]] == 1 and d.bus.ram[sym["dialogo"]] in (1, 2),
-          f"dlg_box={d.bus.ram[sym['dlg_box']]} dialogo={d.bus.ram[sym['dialogo']]}")
-
-    # a boca dele nao pode mexer: agora quem fala e a Amanda
-    bocas2 = set()
-    bocas2_amanda = set()
-    for _ in range(60):
-        d.frame()
-        bocas2.add(d.bus.oam[37])
-        bocas2_amanda.add(d.bus.oam[5])
-    check("a boca dele NAO mexe na fala da Amanda", bocas2 == {17}, str(sorted(bocas2)))
-    check("a boca DELA mexe na propria fala", bocas2_amanda == {1, TILE_AMA_BOCA_E},
-          str(sorted(bocas2_amanda)))
-
-    for _ in range(150): d.frame()
-    check("a fala da Amanda termina", d.bus.ram[sym["dialogo"]] == 3)
-    # a caixa dela fica na linha 16 (uma pagina abaixo da do Victor)
-    nome2 = [d.bus.vram[0x2000 + 17*32 + 9 + i] for i in range(7)]
-    check("a etiqueta AMANDA: esta na tela", nome2 == [246, 250, 246, 251, 248, 246, 245],
-          f"tiles {nome2}")
-    letras2 = [d.bus.vram[0x2000 + 18*32 + 9 + i] for i in range(5)]
-    check("a fala da Amanda esta na tela: S E N T A",
-          letras2 == [224, 210, 219, 225, 206], f"tiles {letras2}")
-
-    d.frame(BTN_B)
-    for _ in range(14): d.frame()
-    check("B fecha a caixa da Amanda", d.bus.ram[sym["dialogo"]] == 0)
+    # da parte 2 em diante (o dialogo inteiro tem 13 partes agora, alternando
+    # Victor/Amanda varias vezes -- ver FALANTE_TAB): percorre o resto de
+    # forma generica, conferindo so que cada parte abre na caixa (posicao +
+    # etiqueta) de quem realmente fala nela, sem transcrever cada frase.
+    nome_por_falante = {0: NOME_VICTOR, 1: NOME_AMANDA}
+    linha_nome = {0: 9, 1: 17}       # 0 = Victor (caixa de cima), 1 = Amanda
+    a_boca_mexeu = {0: False, 1: False}
+    for parte in range(1, len(FALANTE_TAB)):
+        for _ in range(400):
+            d.frame()
+            if d.bus.oam[5] == TILE_AMA_BOCA_E:
+                a_boca_mexeu[1] = True
+            if d.bus.oam[37] == 22:
+                a_boca_mexeu[0] = True
+        check(f"parte {parte}: o texto termina", d.bus.ram[sym["dialogo"]] == 3,
+              f"dialogo={d.bus.ram[sym['dialogo']]}")
+        falante = FALANTE_TAB[parte]
+        check(f"parte {parte}: caixa do falante certo",
+              d.bus.ram[sym["dlg_box"]] == falante,
+              f"esperado {falante}, leu {d.bus.ram[sym['dlg_box']]}")
+        linha = linha_nome[falante]
+        nome_lido = [d.bus.vram[0x2000 + linha*32 + 9 + i] for i in range(7)]
+        check(f"parte {parte}: etiqueta do falante certo",
+              nome_lido == nome_por_falante[falante], f"tiles {nome_lido}")
+        if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
+            coracao = d.bus.vram[0x2000 + (linha + 1)*32 + 9 + 6]
+            check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
+        d.frame(BTN_B)
+        for _ in range(14): d.frame()
+    check("as bocas mexeram nas partes de cada um", all(a_boca_mexeu.values()),
+          str(a_boca_mexeu))
+    check("as 13 partes passaram, o dialogo fechou", d.bus.ram[sym["dialogo"]] == 0)
 
     print("\n== 6c. O dialogo acaba e o minigame comeca ==")
     for _ in range(10): d.frame()

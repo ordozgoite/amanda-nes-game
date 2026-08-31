@@ -283,18 +283,40 @@ def guardanapos(x, y):
 # As letras sao escuras sobre branco (o contrario do menu), usando a
 # paleta 2 do fundo: cor 1 = marrom, cor 3 = branco.
 
-DLG_BASE   = 206                      # A-Z ficam em 206..231
-DLG_BRANCO = 232                      # fundo do balao, e tambem o espaco
-DLG_EXCL   = 233
-DLG_ACENTO = {"A_": 234, "E_": 235, "C_": 236}   # A-agudo, E-circunflexo, C-cedilha
+DLG_BASE   = 204                      # A-Z ficam em 204..229
+DLG_BRANCO = 230                      # fundo do balao, e tambem o espaco
+DLG_EXCL   = 231
+DLG_ACENTO = {"E_": 232}              # so E-circunflexo (de "voce", usado 5x)
+DLG_VIRGULA = 233
+DLG_INTERR  = 234
+DLG_CORACAO = 235                     # a reacao da Amanda, sem letra nenhuma
+DLG_PONTO   = 236                     # ponto final e reticencias (repetido 3x)
 DLG_BORDA  = 237                      # 237..244: SE, S, SD, E, D, IE, I, ID
 MINI_BASE  = 245                      # 245..255: nome de quem fala, fonte menor
 
+# Nao ha mais orcamento de tile pra A-agudo nem Ç alem do que o dialogo de
+# verdade usa -- a cena ja ocupa 204/256 tiles sozinha, e cada acento custa
+# um tile inteiro. "ESTA"/"VARIOS" ficam sem acento (so apareciam uma vez
+# cada); "VOCE" com Ê fica, porque aparece cinco vezes. Se um dialogo
+# futuro precisar de mais acentos, e so somar de volta e reequilibrar os
+# numeros acima.
 ACENTUADAS = {
- "A_": ["...X.", ".XXX.", "X...X", "XXXXX", "X...X", "X...X", "X...X"],
  "E_": ["..X..", ".X.X.", "XXXXX", "X....", "XXXX.", "X....", "XXXXX"],
- "C_": [".XXX.", "X...X", "X....", "X....", "X....", "X...X", ".XXX.", "..XX."],
 }
+
+# O coracaozinho que fecha a caixa da Amanda quando ela so reage, sem
+# palavra -- um emoji de verdade nao existe no NES, e "<3" pediria mais um
+# glifo (o "<") sem sobrar tile pra ele; um coracao desenhado direto e mais
+# barato e mais bonito.
+CORACAO_GLIFO = [
+    ".X.X.",
+    "XXXXX",
+    "XXXXX",
+    ".XXX.",
+    "..X..",
+    ".....",
+    ".....",
+]
 
 def glifo_caixa(linhas):
     """Letra escura sobre fundo branco."""
@@ -356,6 +378,10 @@ def tiles_dialogo():
             t[DLG_BASE + ord(ch) - ord("A")] = glifo_caixa(linhas)
     t[DLG_BRANCO] = encode_tile(["3" * 8] * 8)
     t[DLG_EXCL]   = glifo_caixa(FONT["!"])
+    t[DLG_VIRGULA] = glifo_caixa(FONT[","])
+    t[DLG_INTERR]  = glifo_caixa(FONT["?"])
+    t[DLG_PONTO]   = glifo_caixa(FONT["."])
+    t[DLG_CORACAO] = glifo_caixa(CORACAO_GLIFO)
     for k, i in DLG_ACENTO.items():
         t[i] = glifo_caixa(ACENTUADAS[k])
     for n, tile in enumerate(tiles_borda()):
@@ -370,34 +396,42 @@ def para_tiles(texto):
     for ch in texto:
         if ch == " ":   fora.append(DLG_BRANCO)
         elif ch == "!": fora.append(DLG_EXCL)
-        elif ch in "\xC1\xCA\xC7":
-            fora.append(DLG_ACENTO[{"\xC1":"A_","\xCA":"E_","\xC7":"C_"}[ch]])
+        elif ch == ",": fora.append(DLG_VIRGULA)
+        elif ch == "?": fora.append(DLG_INTERR)
+        elif ch == ".": fora.append(DLG_PONTO)
+        elif ch == "\x02": fora.append(DLG_CORACAO)   # sentinela: o coracaozinho
+        elif ch == "\xCA": fora.append(DLG_ACENTO["E_"])
         elif "A" <= ch <= "Z": fora.append(DLG_BASE + ord(ch) - ord("A"))
         else: raise ValueError(f"sem tile pra {ch!r}")
     return fora
 
-# O dialogo tem tres partes, cada uma na sua propria caixa de bala -- uma
-# fecha e a proxima abre. As duas primeiras sao do Victor (mesma posicao,
-# perto da cabeca dele); a ultima e da Amanda, mais perto de onde ela fica
-# parada (ver caixa_pag_tab/falante_tab em src/jogo.s). Cada linha tem no
-# maximo 14 caracteres, a largura util do balao.
-FALA_VICTOR_1 = [
-    "NOSSA! VOC\xCA",
-    "EST\xC1 MUITO",
-    "BONITA!",
+# O dialogo e uma sequencia de caixas de bala -- uma fecha e a proxima
+# abre. Cada caixa tem UM falante so; a posicao na tela segue quem fala
+# (Victor sempre perto da cabeca dele, Amanda perto de onde ela fica
+# parada -- ver caixa_pag_tab/falante_tab em src/jogo.s). Cada linha tem
+# no maximo 14 caracteres, a largura util do balao.
+#
+# "NAO" e "TO" ficam sem acento (em vez de "NÃO"/"TÔ") porque o balao so
+# tem orcamento de tile pra Á e Ê -- as duas que o resto do texto usa de
+# verdade. Dar Ã e Ô de presente pra essas duas palavras estouraria os
+# 256 tiles da cena (ver DLG_BASE acima).
+GRUPOS_FALA = [
+    (0, ["NOSSA... VOC\xCA", "ESTA MUITO", "BONITA."]),
+    (0, ["DESCULPA VIR", "DE CROCS,", "RSRS."]),
+    (1, ["VEM, SENTA", "AQUI DO MEU", "LADO!"]),
+    (0, ["ME CONTA, O", "QUE VOC\xCA GOSTA", "DE FAZER?"]),
+    (1, ["EU SOU", "PROFESSORA,", "PEDAGOGA... E", "TO FAZENDO", "PSICOLOGIA."]),
+    (1, ["E VOC\xCA?"]),
+    (0, ["EU SOU", "PROGRAMADOR..."]),
+    (0, ["E FALO VARIOS", "IDIOMAS..."]),
+    (1, ["      \x02"]),                        # so a reacao dela, sem palavra
+    (0, ["BORA PEDIR AS", "PIZZAS?"]),
+    (1, ["VAMOS! VOU", "PEDIR UM", "COMBO DE TRES."]),
+    (0, ["NOSSA! VOC\xCA", "BATE BEM DE", "PRATO, HEIN?"]),
+    (1, ["VOC\xCA AINDA", "NAO VIU NADA,", "RSRS."]),
 ]
-FALA_VICTOR_2 = [
-    "EU VIM DE",
-    "CROCS RSRS",
-]
-FALA_AMANDA = [
-    "SENTA AQUI",
-    "DO MEU LADO!",
-]
-# grupos, na ordem em que aparecem; falante de cada um: 0 = Victor, 1 = Amanda
-GRUPOS_FALA   = [FALA_VICTOR_1, FALA_VICTOR_2, FALA_AMANDA]
-FALANTE_GRUPO = [0, 0, 1]
-FALA = [linha for grupo in GRUPOS_FALA for linha in grupo]
+FALANTE_GRUPO = [falante for falante, _ in GRUPOS_FALA]
+FALA = [linha for _, grupo in GRUPOS_FALA for linha in grupo]
 
 # ================================================================== saida
 
@@ -506,7 +540,7 @@ def main():
     # cada grupo (caixa) sabe onde comeca e onde termina dentro de FALA, e
     # quem fala nele -- o assembly nunca reconta isso na mao
     inicios, fins, pos = [], [], 0
-    for g in GRUPOS_FALA:
+    for _, g in GRUPOS_FALA:
         inicios.append(pos)
         pos += len(g)
         fins.append(pos)

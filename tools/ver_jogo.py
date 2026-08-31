@@ -48,25 +48,21 @@ for _ in range(6):
 render(nes).save("build/jogo-5-fala-amanda.png")
 print("build/jogo-5-fala-amanda.png")
 
-for _ in range(150):             # a parte 1 do Victor ("...bonita!")
-    nes.frame()
-render(nes).save("build/jogo-6-fala-fim.png")
-print("build/jogo-6-fala-fim.png")
+# o dialogo inteiro tem 13 partes agora (ver FALANTE_GRUPO em
+# tools/make_scene.py); so tira foto de algumas -- a primeira, a do
+# coracaozinho (parte 8) e a ultima -- e passa pelas outras direto
+CAPTURAS = {0: "build/jogo-6-fala-fim.png",
+            8: "build/jogo-6a-fala-coracao.png",
+            12: "build/jogo-6b-fala-ultima.png"}
+for parte in range(13):
+    for _ in range(400):
+        nes.frame()
+    if parte in CAPTURAS:
+        render(nes).save(CAPTURAS[parte])
+        print(CAPTURAS[parte])
+    nes.frame(BTN_B)
 
-nes.frame(BTN_B)                 # fecha a parte 1, abre a parte 2 (mesma caixa)
-for _ in range(150):
-    nes.frame()
-render(nes).save("build/jogo-6a-fala-parte2.png")
-print("build/jogo-6a-fala-parte2.png")
-
-nes.frame(BTN_B)                 # fecha a parte 2 do Victor, abre a da Amanda
-for _ in range(200):
-    nes.frame()
-render(nes).save("build/jogo-6b-fala-amanda.png")
-print("build/jogo-6b-fala-amanda.png")
-
-nes.frame(BTN_B)                 # fecha a caixa dela -> carrega o minigame
-for _ in range(20):
+for _ in range(20):               # fecha a ultima caixa -> carrega o minigame
     nes.frame()
 render(nes).save("build/jogo-7-minigame.png")
 print("build/jogo-7-minigame.png (banco", nes.bus.banco, ")")
