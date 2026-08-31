@@ -99,19 +99,21 @@ Todas custaram um bug de verdade antes de virar linha de código.
 ## Música
 
 Três vozes por música (arpejo/melodia na quadrada 1, harmonia na quadrada 2,
-baixo no triângulo), e **duas músicas**: uma para o menu e o passeio pela
-pizzaria, outra para o minigame. A engine é chamada uma vez por quadro no
-NMI e lê pares (nota, duração); o envelope de decaimento é o que faz a nota
-soar tocada, e não como órgão.
+baixo no triângulo), e **duas músicas**: uma para o passeio pela pizzaria,
+outra para o minigame. A engine é chamada uma vez por quadro no NMI e lê
+pares (nota, duração); o envelope de decaimento é o que faz a nota soar
+tocada, e não como órgão.
 
-No menu e na pizzaria toca a **introdução de "Amanda" (Boston)** — G e C/G
-em arpejo sobre pedal de sol, tirada de tablatura. Ao entrar no minigame das
-pizzas, a música troca para o **refrão**, transcrito do MIDI oficial da
-música (que também deu o andamento, 61 BPM). O MIDI não tem faixa de vocal,
-mas tem uma faixa de sax alto que funciona como guia de melodia; o refrão em
-si foi achado comparando um preview da faixa com a gravação, já que o
-arquivo não tem marcadores de verso/refrão. (Uma versão anterior colava as
-duas partes num loop só, mas na gravação real tem um verso inteiro entre
+O **menu fica em silêncio**. Apertar START toca um "plin" (uma nota só, com
+o próprio decaimento de hardware do APU) e leva pra pizzaria, onde começa a
+**introdução de "Amanda" (Boston)** — G e C/G em arpejo sobre pedal de sol,
+tirada de tablatura. Ao entrar no minigame das pizzas, a música troca para o
+**refrão**, transcrito do MIDI oficial da música (que também deu o
+andamento, 61 BPM). O MIDI não tem faixa de vocal, mas tem uma faixa de sax
+alto que funciona como guia de melodia; o refrão em si foi achado comparando
+um preview da faixa com a gravação, já que o arquivo não tem marcadores de
+verso/refrão. (Uma versão anterior colava as duas partes num loop só, mas na
+gravação real tem um verso inteiro entre
 elas; emendadas direto soava como duas músicas coladas, então virou uma
 troca de verdade em vez de um loop maior.)
 

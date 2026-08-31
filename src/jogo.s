@@ -164,6 +164,7 @@ pz_y:        .res 3
 pz_ativa:    .res 3
 
 ; --- musica ---
+musica_liga: .res 1         ; 0 = motor desligado (menu, em silencio)
 ch_ptr_lo:   .res 3
 ch_ptr_hi:   .res 3
 ch_base_lo:  .res 3         ; onde cada canal reinicia ao bater $FF -- muda
@@ -308,6 +309,7 @@ atualiza_menu:
     lda botoes_novos
     and #BTN_START
     beq @fim
+    jsr toca_plin
     jsr carrega_cena
 @fim:
     rts
@@ -320,8 +322,7 @@ carrega_menu:
     lda #BANCO_MENU
     jsr troca_banco
 
-    lda #$00                ; menu e pizzaria tocam a musica de sempre
-    jsr troca_musica
+    jsr musica_para          ; o menu fica em silencio
 
     bit PPUSTATUS           ; graficos do fundo -> pattern table 1
     PPU_ADDR $1000
@@ -660,6 +661,9 @@ carrega_cena:
 
     lda #BANCO_CENA
     jsr troca_banco
+
+    lda #$00                ; a pizzaria comeca a tocar a introducao
+    jsr troca_musica
 
     bit PPUSTATUS           ; cenario -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -1668,8 +1672,7 @@ musica_init:
     sta $4005
     lda #$0F
     sta $4015
-    lda #$00
-    jmp troca_musica
+    jmp musica_para
 
 ; --------------------------------------------------------------------------
 ;  Troca a musica ativa (A = indice, ver musica_offset/MUSICAS). So chame
@@ -1697,9 +1700,42 @@ troca_musica:
     inx
     cpx #$03
     bne @canal
+    lda #$01
+    sta musica_liga
+    rts
+
+; --------------------------------------------------------------------------
+;  Silencia as 3 vozes e desliga o motor -- o menu fica sem musica. Tambem
+;  so chame entre desliga_tela/liga_tela, pelo mesmo motivo de troca_musica.
+; --------------------------------------------------------------------------
+musica_para:
+    lda #$00
+    sta musica_liga
+    sta $4000                ; quadrada 1: volume 0
+    sta $4004                ; quadrada 2: volume 0
+    sta $4008                ; triangulo: contador linear 0
+    rts
+
+; --------------------------------------------------------------------------
+;  O "plin" do menu, tocado no START antes de entrar na pizzaria. Uma nota
+;  so, pulso 2 -- livre nesse instante porque o motor de 3 canais ainda
+;  esta desligado (musica_liga=0). Usa o proprio decaimento de hardware do
+;  APU (contador de duracao) em vez do motor manual: mais simples pra um
+;  efeito instantaneo que a musica nem vai acompanhar.
+; --------------------------------------------------------------------------
+toca_plin:
+    lda #%10011111           ; duty 50%, volume constante 15, sem "halt" (bit5=0)
+    sta $4004                ; (sem halt = o contador de duracao decai sozinho)
+    lda per_lo + PLIN_NOTA
+    sta $4006
+    lda per_hi + PLIN_NOTA
+    ora #(9 << 3)             ; contador de duracao curto (indice 9 = 8 quadros)
+    sta $4007
     rts
 
 musica_tick:
+    lda musica_liga
+    beq @fim
     ldx #$00
 @canal:
     dec ch_wait, x
@@ -1710,6 +1746,7 @@ musica_tick:
     inx
     cpx #$03
     bne @canal
+@fim:
     rts
 
 proxima_nota:

@@ -29,13 +29,14 @@ N_NOTAS = 60          # do 2 ate si 6
 
 # ------------------------------------------------------------------ musica
 # Duas musicas, trocadas pelo assembly conforme a tela (ver troca_musica em
-# jogo.s): a do menu e da pizzaria continua tocando por baixo do passeio e
-# do dialogo; so quando entra no minigame das pizzas e que troca pro refrao
-# de "Amanda". Antes as duas ficavam coladas num loop so, mas na gravacao
-# real tem um verso inteiro entre elas -- emendadas direto soava como duas
-# musicas diferentes grudadas.
+# jogo.s). O menu fica em silencio; a introducao comeca quando entra na
+# pizzaria (embalada pelo "plin" do START, mais abaixo) e toca por baixo do
+# passeio e do dialogo; so quando entra no minigame das pizzas e que troca
+# pro refrao de "Amanda". As duas musicas ja ficaram coladas num loop so,
+# mas na gravacao real tem um verso inteiro entre elas -- emendadas direto
+# soava como duas musicas diferentes grudadas.
 
-# --------------------------------------------------- musica 0: menu/pizzaria
+# --------------------------------------------------- musica 0: a pizzaria
 # Introducao de "Amanda" (Boston), a partir da tablatura.
 #
 # O que a tab revelou, e que a cifra sozinha nao dizia:
@@ -59,14 +60,14 @@ ARPEJO_CG = ["E3", "G3", "C4", "G4", "E3", "G3", "C4", "G4"]
 COMPASSOS = [ARPEJO_G, ARPEJO_CG] * 4          # 8 compassos, ~32 s
 
 # canal 0: o arpejo
-canal0_menu = [(n, E) for compasso in COMPASSOS for n in compasso]
+canal0_cena = [(n, E) for compasso in COMPASSOS for n in compasso]
 
 # canal 1: so a voz que se move. E ela que avisa o ouvido que o acorde
 # mudou -- no violao e o hammer-on da segunda corda, B3 -> C4.
-canal1_menu = [("B4" if c is ARPEJO_G else "C5", CP) for c in COMPASSOS]
+canal1_cena = [("B4" if c is ARPEJO_G else "C5", CP) for c in COMPASSOS]
 
 # canal 2: pedal de sol, rearticulado a cada meio compasso pra nao virar orgao
-canal2_menu = [("G2", CP // 2)] * (len(COMPASSOS) * 2)
+canal2_cena = [("G2", CP // 2)] * (len(COMPASSOS) * 2)
 
 # --------------------------------------------------- musica 1: o minigame
 # O refrao de "Amanda", transcrito do MIDI oficial da musica (tools/midi.py
@@ -119,12 +120,20 @@ canal2_jogo = [
     ("G2", 90), ("D3", 15), ("E3", 15), ("D3", 105), ("D3", 15), ("D2", 120),
 ]
 
-# indice 0 = menu/pizzaria, indice 1 = minigame -- e o que troca_musica (em
+# indice 0 = pizzaria, indice 1 = minigame -- e o que troca_musica (em
 # jogo.s) espera receber em A pra trocar de musica
 MUSICAS = [
-    [canal0_menu, canal1_menu, canal2_menu],
+    [canal0_cena, canal1_cena, canal2_cena],
     [canal0_jogo, canal1_jogo, canal2_jogo],
 ]
+
+# --------------------------------------------------- efeito: o "plin"
+# Toca no menu quando aperta START, antes de entrar na pizzaria -- uma nota
+# so, e nao usa esse motor de 3 canais: como e instantaneo e a musica ainda
+# nem comecou, e mais simples deixar o proprio hardware do APU decair a
+# nota sozinho (ver toca_plin em jogo.s) do que ligar o motor manual so
+# pra isso.
+PLIN = "A5"
 
 # confere que os tres canais de cada musica tem a mesma duracao: cada um
 # roda o proprio laco, entao qualquer diferenca faria eles se
@@ -144,7 +153,8 @@ def tabela(nome, valores, alto):
     return "\n".join(linhas)
 
 def main():
-    saida = ["; gerado por tools/make_song.py -- nao edite a mao", ""]
+    saida = ["; gerado por tools/make_song.py -- nao edite a mao", "",
+             f"PLIN_NOTA = {indice(PLIN)}    ; nota do efeito do START no menu ({PLIN})", ""]
 
     per = [0] * (N_NOTAS + 1)
     tri = [0] * (N_NOTAS + 1)

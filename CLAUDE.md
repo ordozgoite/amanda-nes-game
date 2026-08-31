@@ -92,7 +92,8 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
 
 ## Estado atual
 
-Pronto: tela de titulo, musica em loop, cenario da pizzaria, dialogo completo
+Pronto: tela de titulo (em silencio -- START toca um "plin" e leva pra
+pizzaria, que so ai comeca a musica), cenario da pizzaria, dialogo completo
 (incluindo a resposta dela), minigame das pizzas caindo (arcade rejogavel,
 com placar, derrota em `ERROS_MAX` erros e uma comemoracao ao alcancar
 `PONTOS_MIN` pontos).

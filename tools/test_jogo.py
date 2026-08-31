@@ -347,7 +347,14 @@ def main():
     check("START no fim de jogo volta pro menu", f.bus.ram[sym["tela"]] == 0)
     check("banco 0 de volta (fim de jogo)", f.bus.banco == 0, f"banco {f.bus.banco}")
 
-    print("\n== 11. A musica atravessa as trocas de tela ==")
+    print("\n== 11. A musica troca de estado junto com a tela ==")
+    # a essa altura 'nes' esta de volta ao menu (secao 6) -- e o menu agora
+    # fica em silencio (so a pizzaria e o minigame tocam musica)
+    check("menu em silencio", nes.bus.apu[0x00] & 0x0F == 0 and
+          nes.bus.apu[0x04] & 0x0F == 0)
+    nes.frame(BTN_START)                    # entra na pizzaria: a musica comeca
+    for _ in range(20):
+        nes.frame()
     p1 = nes.bus.apu[0x02] | ((nes.bus.apu[0x03] & 7) << 8)
     mudou = False
     for _ in range(40):
@@ -356,7 +363,12 @@ def main():
         if p != p1:
             mudou = True
     check("canais ainda ligados", nes.bus.apu[0x15] & 0x0F == 0x0F)
-    check("as notas continuam mudando", mudou)
+    check("as notas continuam mudando na pizzaria", mudou)
+    nes.frame(BTN_START)                    # volta pro menu, deixa o estado como antes
+    for _ in range(6):
+        nes.frame()
+    check("silencia de novo ao voltar pro menu",
+          nes.bus.ram[sym["tela"]] == 0 and nes.bus.apu[0x00] & 0x0F == 0)
 
     print("\n== 12. Estabilidade ==")
     for _ in range(3):
