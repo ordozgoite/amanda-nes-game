@@ -43,6 +43,7 @@ capturas: $(JOGO)
 audio: $(JOGO)
 	python3 tools/render_audio.py $(JOGO) build/musica.wav 2100
 	python3 tools/audio_dialogo.py
+	python3 tools/audio_minigame.py
 
 rodar: $(JOGO)
 	fceux --sound 1 --volume 150 --xscale 3 --yscale 3 $(JOGO)

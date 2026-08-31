@@ -279,11 +279,12 @@ def guardanapos(x, y):
 # As letras sao escuras sobre branco (o contrario do menu), usando a
 # paleta 2 do fundo: cor 1 = marrom, cor 3 = branco.
 
-DLG_BASE   = 208                      # A-Z ficam em 208..233
-DLG_BRANCO = 234                      # fundo do balao, e tambem o espaco
-DLG_EXCL   = 235
-DLG_ACENTO = {"A_": 236, "E_": 237, "C_": 238}   # A-agudo, E-circunflexo, C-cedilha
-DLG_BORDA  = 239                      # 239..246: SE, S, SD, E, D, IE, I, ID
+DLG_BASE   = 206                      # A-Z ficam em 206..231
+DLG_BRANCO = 232                      # fundo do balao, e tambem o espaco
+DLG_EXCL   = 233
+DLG_ACENTO = {"A_": 234, "E_": 235, "C_": 236}   # A-agudo, E-circunflexo, C-cedilha
+DLG_BORDA  = 237                      # 237..244: SE, S, SD, E, D, IE, I, ID
+MINI_BASE  = 245                      # 245..255: nome de quem fala, fonte menor
 
 ACENTUADAS = {
  "A_": ["...X.", ".XXX.", "X...X", "XXXXX", "X...X", "X...X", "X...X"],
@@ -297,6 +298,37 @@ def glifo_caixa(linhas):
     while len(out) < 8:
         out.append("3" * 8)
     return encode_tile(out)
+
+# A etiqueta com o nome de quem fala ("VICTOR:", "AMANDA:") usa uma fonte
+# a parte, desenhada menor de proposito -- 4x5 pixels, com bastante margem
+# em volta, contra os 5x7 quase sem margem da fonte grande. So os glifos
+# que os dois nomes realmente precisam.
+MINI_FONT = {
+    "V": ["X..X", "X..X", "X..X", ".XX.", "..X."],
+    "I": [".XX.", ".XX.", ".XX.", ".XX.", ".XX."],
+    "C": [".XXX", "X...", "X...", "X...", ".XXX"],
+    "T": ["XXXX", ".XX.", ".XX.", ".XX.", ".XX."],
+    "O": [".XX.", "X..X", "X..X", "X..X", ".XX."],
+    "R": ["XXX.", "X..X", "XXX.", "X.X.", "X..X"],
+    "A": [".XX.", "X..X", "XXXX", "X..X", "X..X"],
+    "M": ["X..X", "XXXX", "X..X", "X..X", "X..X"],
+    "N": ["X..X", "XX.X", "X.XX", "X..X", "X..X"],
+    "D": ["XXX.", "X..X", "X..X", "X..X", "XXX."],
+    ":": ["....", ".XX.", "....", ".XX.", "...."],
+}
+MINI_ORDEM = sorted(MINI_FONT)   # ordem fixa: so precisa bater tile <-> indice
+
+def glifo_mini(linhas):
+    """Letra escura sobre fundo branco, 4x5 numa margem de 8x8 -- por isso
+    fica visivelmente menor que glifo_caixa (5x7 quase sem margem)."""
+    out = ["3" * 8, "3" * 8]                          # margem de cima
+    for l in linhas:
+        out.append("3" + "".join("1" if c == "X" else "3" for c in l) + "333")
+    out.append("3" * 8)                               # margem de baixo
+    return encode_tile(out)
+
+def mini_tiles(texto):
+    return [MINI_BASE + MINI_ORDEM.index(ch) for ch in texto]
 
 def tiles_borda():
     """As 8 pecas da moldura: cantos e lados."""
@@ -324,6 +356,8 @@ def tiles_dialogo():
         t[i] = glifo_caixa(ACENTUADAS[k])
     for n, tile in enumerate(tiles_borda()):
         t[DLG_BORDA + n] = tile
+    for n, ch in enumerate(MINI_ORDEM):
+        t[MINI_BASE + n] = glifo_mini(MINI_FONT[ch])
     return t
 
 def para_tiles(texto):
@@ -452,6 +486,12 @@ def main():
         linhas.append(f"fala{n}:  .byte {bs}, $00   ; {txt}")
     linhas += ["", "fala_lo:  .byte " + ", ".join(f"<fala{n}" for n in range(len(FALA))),
                "fala_hi:  .byte " + ", ".join(f">fala{n}" for n in range(len(FALA))), ""]
+    # a etiqueta com o nome de quem fala, na fonte mini -- aparece inteira
+    # de uma vez (nao letra a letra como a fala) quando a caixa abre
+    for nome, texto in (("nome_victor", "VICTOR:"), ("nome_amanda", "AMANDA:")):
+        bs = ", ".join(f"${v:02X}" for v in mini_tiles(texto))
+        linhas.append(f"{nome}:  .byte {bs}   ; {texto}")
+    linhas.append("")
     linhas += [f"; quantas paginas de 256 bytes a CHR da cena ocupa -- o assembly",
                f"; le daqui em vez de ter o numero escrito na mao",
                f"PAGINAS_CENA  = {paginas}",

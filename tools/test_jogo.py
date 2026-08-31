@@ -10,6 +10,7 @@ ROM = "jogo.nes"
 BTN_B, BTN_START, BTN_LEFT, BTN_RIGHT = 0x02, 0x08, 0x40, 0x80
 POS_VICTOR = 0x2000 + 12 * 32 + 13
 POS_AMANDA = 0x2000 + 17 * 32 + 13
+TILE_AMA_BOCA_E = 28   # ver TILE_AMA_BOCA_E em src/jogo.s -- nao e um label
 
 def anda(nes, botao, n):
     for _ in range(n):
@@ -49,6 +50,9 @@ def main():
     check("banco 0 selecionado", nes.bus.banco == 0, f"banco {nes.bus.banco}")
     check("VICTOR na tela", nes.nt_text(POS_VICTOR, 6) == "VICTOR")
     check("AMANDA na tela", nes.nt_text(POS_AMANDA, 6) == "AMANDA")
+    POS_AVISO_START = 0x2000 + 24 * 32 + 3
+    check("aviso de START na tela",
+          nes.nt_text(POS_AVISO_START, 25) == "APERTE START PARA COMECAR")
     # tile = ascii - $20, entao 'A' ($41) vira o tile $21
     def tile_vazio(t):
         return all(nes.bus.vram[0x1000 + t * 16 + k] == 0 for k in range(16))
@@ -176,10 +180,14 @@ def main():
 
     # a boca abre e fecha enquanto escreve
     bocas = set()
+    bocas_amanda = set()
     for _ in range(40):
         d.frame()
         bocas.add(d.bus.oam[37])
+        bocas_amanda.add(d.bus.oam[5])
     check("a boca dele mexe enquanto fala", bocas == {17, 22}, str(sorted(bocas)))
+    check("a boca DELA fica parada na fala do Victor", bocas_amanda == {1},
+          str(sorted(bocas_amanda)))
     # o tique tem que pulsar, nao zunir: o volume liga e desliga
     vols = set()
     for _ in range(30):
@@ -193,9 +201,13 @@ def main():
     check("o tique silencia no fim", d.bus.apu[0x0C] == 0x10,
           f"${d.bus.apu[0x0C]:02X}")
     check("a boca para de mexer", d.bus.oam[37] == 17)
+    # a etiqueta "VICTOR:" (fonte mini) fica na linha 9, uma acima da mensagem
+    nome = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(7)]
+    check("a etiqueta VICTOR: esta na tela", nome == [255, 249, 247, 254, 252, 253, 245],
+          f"tiles {nome}")
     # o texto foi mesmo escrito na tela: primeira linha comeca com N O S S A
-    letras = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(5)]
-    check("a primeira linha do balao esta na tela", letras == [221, 222, 226, 226, 208],
+    letras = [d.bus.vram[0x2000 + 10*32 + 9 + i] for i in range(5)]
+    check("a primeira linha do balao esta na tela", letras == [219, 220, 224, 224, 206],
           f"tiles {letras}")
     check("essa e a caixa do Victor", d.bus.ram[sym["dlg_box"]] == 0)
 
@@ -207,17 +219,24 @@ def main():
 
     # a boca dele nao pode mexer: agora quem fala e a Amanda
     bocas2 = set()
+    bocas2_amanda = set()
     for _ in range(60):
         d.frame()
         bocas2.add(d.bus.oam[37])
+        bocas2_amanda.add(d.bus.oam[5])
     check("a boca dele NAO mexe na fala da Amanda", bocas2 == {17}, str(sorted(bocas2)))
+    check("a boca DELA mexe na propria fala", bocas2_amanda == {1, TILE_AMA_BOCA_E},
+          str(sorted(bocas2_amanda)))
 
     for _ in range(150): d.frame()
     check("a fala da Amanda termina", d.bus.ram[sym["dialogo"]] == 3)
     # a caixa dela fica na linha 16 (uma pagina abaixo da do Victor)
-    letras2 = [d.bus.vram[0x2000 + 17*32 + 9 + i] for i in range(5)]
+    nome2 = [d.bus.vram[0x2000 + 17*32 + 9 + i] for i in range(7)]
+    check("a etiqueta AMANDA: esta na tela", nome2 == [246, 250, 246, 251, 248, 246, 245],
+          f"tiles {nome2}")
+    letras2 = [d.bus.vram[0x2000 + 18*32 + 9 + i] for i in range(5)]
     check("a fala da Amanda esta na tela: S E N T A",
-          letras2 == [226, 212, 221, 227, 208], f"tiles {letras2}")
+          letras2 == [224, 210, 219, 225, 206], f"tiles {letras2}")
 
     d.frame(BTN_B)
     for _ in range(14): d.frame()
@@ -246,6 +265,9 @@ def main():
             break
     check("pegar a pizza soma ponto", d.bus.ram[sym["jogo_pontos"]] > pontos0,
           f"{pontos0} -> {d.bus.ram[sym['jogo_pontos']]}")
+    check("som de comer no canal de ruido",
+          (d.bus.apu[0x0C], d.bus.apu[0x0E], d.bus.apu[0x0F]) == (0x0C, 0x03, 0x48),
+          f"${d.bus.apu[0x0C]:02X} ${d.bus.apu[0x0E]:02X} ${d.bus.apu[0x0F]:02X}")
     for _ in range(4): d.frame()
     DIG_BASE = 96   # ver DIG_BASE em tools/make_jogo.py -- nao e um label, so uma constante
     dez = d.bus.vram[0x2000 + 26] - DIG_BASE
@@ -260,6 +282,9 @@ def main():
             break
     check("deixar cair soma erro", d.bus.ram[sym["jogo_erros"]] > erros0,
           f"{erros0} -> {d.bus.ram[sym['jogo_erros']]}")
+    check("som de queda no canal de ruido",
+          (d.bus.apu[0x0C], d.bus.apu[0x0E], d.bus.apu[0x0F]) == (0x09, 0x0A, 0x68),
+          f"${d.bus.apu[0x0C]:02X} ${d.bus.apu[0x0E]:02X} ${d.bus.apu[0x0F]:02X}")
     for _ in range(4): d.frame()
     erro_tile = d.bus.vram[0x2000 + 32 + 26] - DIG_BASE
     check("o digito de erros foi escrito", 0 <= erro_tile <= 9,

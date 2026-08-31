@@ -8,19 +8,21 @@ partitura. Se a engine errar uma nota ou a duracao, aparece aqui.
 """
 import sys
 sys.path.insert(0, "tools")
-from nesemu import NES, check, FAILS
-from make_song import CANAIS, indice, frequencia, CPU_HZ
+from nesemu import NES, load_labels, check, FAILS
+from make_song import MUSICAS, indice, frequencia, CPU_HZ
+from test_jogo import entra_no_minigame
 
 ROM = "jogo.nes"
 
-def periodos_esperados():
-    """A sequencia de periodos que cada canal deveria produzir, quadro a quadro.
+def periodos_esperados(canais):
+    """A sequencia de periodos que cada canal dessa musica deveria produzir,
+    quadro a quadro.
 
     Numa pausa (indice 0) a engine so zera o volume -- @pausa em jogo.s nao
     escreve $4002/$4003 (nem tri_lo/tri_hi), entao o periodo continua sendo
     o da ultima nota tocada."""
     trilhas = []
-    for c, notas in enumerate(CANAIS):
+    for c, notas in enumerate(canais):
         linha = []
         p_atual = 0
         for nome, dur in notas:
@@ -40,7 +42,9 @@ def lidos(bus):
     return [p1, p2, tr]
 
 def main():
-    esperado = periodos_esperados()
+    sym = load_labels("build/jogo-labels.txt")
+
+    esperado = periodos_esperados(MUSICAS[0])
     laco = len(esperado[0])
 
     nes = NES(ROM)
@@ -57,7 +61,7 @@ def main():
     check("sweep desligado nas duas quadradas",
           nes.bus.apu[0x01] == 0 and nes.bus.apu[0x05] == 0)
 
-    print("\n== 2. As notas batem com a partitura ==")
+    print("\n== 2. A musica do menu/pizzaria bate com a partitura ==")
     # o tocador comeca no primeiro NMI; acha o deslocamento e usa pra todos
     desloc = next(d for d in range(8)
                   if obs[0][d] == esperado[0][0] and obs[0][d + 1] == esperado[0][0])
@@ -76,13 +80,14 @@ def main():
                                    f"leu {primeiro[1]}, esperava {primeiro[2]}"
         check(f"{nomes[c]}: {laco} quadros conferem", erros == 0, det)
 
-    print("\n== 3. O laco fecha e repete ==")
+    print("\n== 3. O laco do menu fecha e repete ==")
     volta = obs[0][desloc + laco:desloc + laco + laco]
     check("segunda passada igual a primeira", volta == esperado[0],
           f"{sum(1 for a, b in zip(volta, esperado[0]) if a != b)} diferencas")
 
     print("\n== 4. Envelope de volume ==")
-    dur1 = CANAIS[0][0][1]                  # duracao da 1a nota, tirada da partitura
+    dur1 = MUSICAS[0][0][0][1]              # duracao da 1a nota, tirada da partitura
+    prox_nome = MUSICAS[0][0][1][0]         # o que vem depois -- nota ou pausa "P"
     nes2 = NES(ROM)
     vols = []
     for _ in range(desloc + dur1 * 2 + 5):
@@ -95,12 +100,60 @@ def main():
     # a engine para de decair em 4 (o 'cmp #$05' do aplica_volume): a nota
     # perde forca mas nao some, que e o que faz soar tocada e nao percutida
     check("volume nao chega a zero (sustenta)", min(nota) >= 4, f"minimo {min(nota)}")
-    check("nota seguinte reataca no volume cheio", vols[dur1] == 0x0F,
-          f"quadro {dur1}: volume {vols[dur1]}")
+    if prox_nome == "P":
+        check("nota seguinte silencia (pausa)", vols[dur1] == 0x00,
+              f"quadro {dur1}: volume {vols[dur1]}")
+    else:
+        check("nota seguinte reataca no volume cheio", vols[dur1] == 0x0F,
+              f"quadro {dur1}: volume {vols[dur1]}")
     check("bit de volume constante ligado", nes2.bus.apu[0x00] & 0x10 != 0)
     check("contador de duracao segurado", nes2.bus.apu[0x00] & 0x20 != 0)
 
-    print("\n== 5. A tela continua viva junto com a musica ==")
+    print("\n== 5. O minigame troca pra musica de \"Amanda\" ==")
+    # carrega_jogo chama troca_musica(1); carrega_menu chama troca_musica(0)
+    # com o mesmo mecanismo, entao testar uma direcao cobre a troca em si.
+    #
+    # Ao contrario do boot (onde a musica comeca em ~3 quadros, entao os 2
+    # primeiros quadros ja bastam pra achar o deslocamento), aqui a troca
+    # acontece em algum ponto dentro do dialogo simulado por
+    # entra_no_minigame, sem hora certa -- pode ser varios quadros antes do
+    # ponto em que a captura comeca. Por isso o deslocamento certo e o que
+    # faz o laco INTEIRO bater (nao so 2 quadros), e a busca precisa cobrir
+    # o laco inteiro (nao so uma folga pequena), senao um comeco perdido
+    # nunca fecha por coincidencia.
+    esperado_jogo = periodos_esperados(MUSICAS[1])
+    laco_jogo = len(esperado_jogo[0])
+    JANELA = laco_jogo
+
+    nes3 = NES(ROM)
+    entra_no_minigame(nes3, sym)
+    obs_jogo = [[], [], []]
+    for _ in range(JANELA + laco_jogo + 8):
+        nes3.frame()
+        v = lidos(nes3.bus)
+        for c in range(3):
+            obs_jogo[c].append(v[c])
+
+    desloc_jogo = next((d for d in range(JANELA)
+                        if obs_jogo[0][d:d + laco_jogo] == esperado_jogo[0]), None)
+    check("a musica troca ao entrar no minigame", desloc_jogo is not None,
+          "" if desloc_jogo is not None else
+          "nenhum deslocamento nos primeiros quadros la dentro faz o refrao bater")
+
+    if desloc_jogo is not None:
+        for c in range(3):
+            erros = 0
+            primeiro = None
+            for i in range(laco_jogo):
+                if obs_jogo[c][desloc_jogo + i] != esperado_jogo[c][i]:
+                    erros += 1
+                    if primeiro is None:
+                        primeiro = (i, obs_jogo[c][desloc_jogo + i], esperado_jogo[c][i])
+            det = "" if not erros else f"1o erro no quadro {primeiro[0]}: " \
+                                       f"leu {primeiro[1]}, esperava {primeiro[2]}"
+            check(f"{nomes[c]} (refrao): {laco_jogo} quadros conferem", erros == 0, det)
+
+    print("\n== 6. A tela continua viva junto com a musica ==")
     check("nomes ainda na tela",
           nes.nt_text(0x2000 + 12 * 32 + 13, 6) == "VICTOR" and
           nes.nt_text(0x2000 + 17 * 32 + 13, 6) == "AMANDA")

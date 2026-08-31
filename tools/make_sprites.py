@@ -59,6 +59,13 @@ AMANDA_CABECA = [
     linha(('.',2), ('1',4), ('2',4), ('1',4), ('.',2)),
 ]
 
+# Amanda falando: so a linha da boca muda, alargando a marca escura --
+# igual ideia do Victor, so que aqui a boca esta espalhada por dois tiles
+# (a cabeca e 2 de largura), entao os dois precisam da versao aberta.
+AMANDA_CABECA_FALANDO = list(AMANDA_CABECA)
+AMANDA_CABECA_FALANDO[10] = linha(('.',2), ('1',2), ('2',2), ('1',4),
+                                   ('2',2), ('1',2), ('.',2))
+
 # O cabelo desce rente ao corpo, nao aberto pros lados.
 AMANDA_TRONCO = [
     linha(('.',2), ('3',3), ('1',6), ('3',3), ('.',2)),           # ombros
@@ -196,6 +203,11 @@ def build():
         saida.append(encode_tile(t))
     for t in fatiar(PIZZA):                    # tiles 26-27: a pizza do minigame
         saida.append(encode_tile(t))
+    # a boca da Amanda: so as duas metades da cabeca onde ela cai (linha 8-15)
+    amanda_falando = AMANDA_CABECA_FALANDO + AMANDA_TRONCO + AMANDA_PERNAS_A
+    falando_a = fatiar(amanda_falando)
+    saida.append(encode_tile(falando_a[1]))    # tile 28: metade esquerda
+    saida.append(encode_tile(falando_a[5]))    # tile 29: metade direita
     while len(saida) < 32:                     # duas paginas de 256 bytes
         saida.append(BLANK)
     return b"".join(saida)
@@ -206,4 +218,5 @@ if __name__ == "__main__":
     assert len(d) == 512, len(d)
     open(destino, "wb").write(d)
     print(f"sprites: {destino} ({len(d)} bytes) -- Amanda 0-15, "
-          f"Victor 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27")
+          f"Victor 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27, "
+          f"boca da Amanda aberta 28-29")

@@ -48,6 +48,7 @@ POS_HEART_TOP = $2000 + 14*32 + 15
 POS_HEART_BOT = $2000 + 15*32 + 15
 POS_AMANDA    = $2000 + 17*32 + 13
 POS_ATTR      = $23C0 + 3*8 + 3
+POS_AVISO_START = $2000 + 24*32 + 3   ; "APERTE START..." la embaixo, centralizado
 
 ; ---- personagens ----
 ; A Amanda tem 16x32 (2 tiles de largura por 4 de altura, 8 sprites).
@@ -63,6 +64,8 @@ PERTO_MAX   = 201
 TILE_BOCA_E = 22    ; Victor de boca aberta
 TILE_BOCA_D = 23
 TILE_AVISO  = 24    ; a caixinha do "B"
+TILE_AMA_BOCA_E = 28  ; Amanda de boca aberta (so na caixa dela)
+TILE_AMA_BOCA_D = 29
 
 ; O balao de fala fica sempre nas colunas 8-23 (16 tiles), mas muda de
 ; LINHA conforme quem esta falando: caixa 0 (Victor) comeca na linha 8,
@@ -77,7 +80,8 @@ TILE_AVISO  = 24    ; a caixinha do "B"
 ; CAIXA_BAIXO/TEXTO_BAIXO continuam sendo uma constante so.
 CAIXA_COL   = 8     ; colunas 8-23
 CAIXA_BAIXO = $08   ; $..08 = coluna 8, linha 0 dentro da pagina da caixa
-TEXTO_BAIXO = $29   ; $..29 = coluna 9, linha 1 dentro da pagina da caixa
+NOME_BAIXO  = $29   ; $..29 = coluna 9, linha 1: o nome de quem fala
+TEXTO_BAIXO = $49   ; $..49 = coluna 9, linha 2: a mensagem, uma linha abaixo
 ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 
 ; ---- minigame: pizzas caindo ----
@@ -162,6 +166,8 @@ pz_ativa:    .res 3
 ; --- musica ---
 ch_ptr_lo:   .res 3
 ch_ptr_hi:   .res 3
+ch_base_lo:  .res 3         ; onde cada canal reinicia ao bater $FF -- muda
+ch_base_hi:  .res 3         ; com a musica ativa (ver troca_musica)
 ch_wait:     .res 3
 ch_note:     .res 3
 ch_vol:      .res 3
@@ -314,6 +320,9 @@ carrega_menu:
     lda #BANCO_MENU
     jsr troca_banco
 
+    lda #$00                ; menu e pizzaria tocam a musica de sempre
+    jsr troca_musica
+
     bit PPUSTATUS           ; graficos do fundo -> pattern table 1
     PPU_ADDR $1000
     lda #<chr_menu
@@ -399,6 +408,18 @@ desenha_menu:
     sta PPUDATA
     lda #%00010000
     sta PPUDATA
+
+    PPU_ADDR POS_AVISO_START
+    ldx #$00
+@aviso:
+    lda txt_aviso_start, x
+    beq @fim
+    sec
+    sbc #$20
+    sta PPUDATA
+    inx
+    bne @aviso
+@fim:
     rts
 
 ; --------------------------------------------------------------------------
@@ -449,6 +470,7 @@ atualiza_cena:
 @so_sprites:
     jsr boca_victor
     jsr monta_oam
+    jsr boca_amanda
     jmp aviso_b
 
 @livre:
@@ -471,10 +493,12 @@ atualiza_cena:
     lda #$00
     sta dlg_lin
     sta dlg_box              ; comeca sempre pela caixa do Victor
+    sta player_frame          ; a boca aberta so existe no quadro 0 da cabeca
 
 @sprites:
     jsr boca_victor
     jsr monta_oam
+    jsr boca_amanda
     jmp aviso_b
 
 ; --------------------------------------------------------------------------
@@ -607,6 +631,28 @@ boca_victor:
     rts
 
 ; --------------------------------------------------------------------------
+;  A boca da Amanda abre e fecha na caixa DELA -- ao contrario do Victor,
+;  a cabeca dela e montada de novo todo quadro (monta_oam, porque ela anda),
+;  entao so precisa sobrescrever o tile quando esta falando; o resto do
+;  tempo o proprio monta_oam ja poe o tile fechado certo.
+; --------------------------------------------------------------------------
+boca_amanda:
+    lda dialogo
+    cmp #$02                ; so mexe a boca enquanto esta escrevendo
+    bne @fim
+    lda dlg_box
+    beq @fim                 ; caixa do Victor: a boca dela fica parada
+    lda frame_count
+    and #$08
+    beq @fim
+    lda #TILE_AMA_BOCA_E     ; sprite 1 = byte 5 (cabeca, metade esquerda)
+    sta oam+5
+    lda #TILE_AMA_BOCA_D     ; sprite 5 = byte 21 (metade direita)
+    sta oam+21
+@fim:
+    rts
+
+; --------------------------------------------------------------------------
 carrega_cena:
     lda #$01
     sta carregando
@@ -679,6 +725,9 @@ carrega_jogo:
 
     lda #BANCO_JOGO
     jsr troca_banco
+
+    lda #$01                ; o minigame toca o refrao de "Amanda"
+    jsr troca_musica
 
     bit PPUSTATUS            ; ceu e chao -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -882,6 +931,7 @@ passo_dialogo:
     bcc @fim
     lda #$02                ; moldura pronta, comeca a escrever
     sta dialogo
+    jsr desenha_nome         ; a etiqueta com o nome aparece de uma vez
     ldx dlg_box
     lda inicio_fala_tab, x   ; cada caixa comeca na sua propria linha de fala
     sta dlg_txt
@@ -1020,6 +1070,37 @@ escreve_letra:
     sta $400E
     lda #$18                ; duracao curtissima
     sta $400F
+    rts
+
+; ---- escreve o nome de quem fala, de uma vez (nao letra a letra) ----
+desenha_nome:
+    lda dlg_box
+    bne @amanda
+    lda #<nome_victor
+    sta ptr
+    lda #>nome_victor
+    sta ptr+1
+    jmp @tem_ptr
+@amanda:
+    lda #<nome_amanda
+    sta ptr
+    lda #>nome_amanda
+    sta ptr+1
+@tem_ptr:
+    ldx dlg_box
+    bit PPUSTATUS
+    lda caixa_pag_tab, x
+    sta PPUADDR
+    lda #NOME_BAIXO
+    sta PPUADDR
+
+    ldy #$00
+@loop:
+    lda (ptr), y
+    sta PPUDATA
+    iny
+    cpy #7
+    bne @loop
     rts
 
 ; ---- devolve uma linha do cenario, lida de volta da ROM ----
@@ -1205,6 +1286,7 @@ atualiza_pizzas:
     inc jogo_pontos
     lda #$01
     sta placar_sujo
+    jsr som_come
     jsr checa_vitoria
     jmp @prox
 @sumiu:
@@ -1213,6 +1295,7 @@ atualiza_pizzas:
     inc jogo_erros
     lda #$01
     sta placar_sujo
+    jsr som_cai
     jsr checa_derrota
 @prox:
     inx
@@ -1348,6 +1431,32 @@ checa_derrota:
     lda #$02
     sta jogo_fase
 @fim:
+    rts
+
+; --------------------------------------------------------------------------
+;  Efeitos sonoros no canal de ruido. A musica so usa os dois pulsos e o
+;  triangulo -- o ruido fica livre o jogo inteiro -- e o contador de
+;  duracao do proprio APU desliga o som sozinho, sem precisar de um quadro
+;  de "desligar" depois (diferente do tique da fala, que e so 1 quadro e
+;  por isso e desligado a mao). Por isso da pra chamar do laco principal
+;  sem tocar em nada que o NMI/musica usem.
+; --------------------------------------------------------------------------
+som_come:
+    lda #$0C                ; volume com decaimento, velocidade media
+    sta $400C
+    lda #$03                ; ruido branco, periodo curto -- som agudo e seco
+    sta $400E
+    lda #$48                ; duracao curta (~streaming de umas poucas notas)
+    sta $400F
+    rts
+
+som_cai:
+    lda #$09                ; decaimento um pouco mais rapido
+    sta $400C
+    lda #$0A                ; periodo mais longo -- som mais grave, de baque
+    sta $400E
+    lda #$68                ; duracao um pouco maior que o som_come
+    sta $400F
     rts
 
 ; --------------------------------------------------------------------------
@@ -1554,25 +1663,40 @@ irq:
 ;  Engine de musica -- tres canais, um passo por quadro
 ; ==========================================================================
 musica_init:
-    ldx #$02
-@canal:
-    lda fluxo_lo, x
-    sta ch_ptr_lo, x
-    lda fluxo_hi, x
-    sta ch_ptr_hi, x
-    lda #$01
-    sta ch_wait, x
-    lda #$00
-    sta ch_vol, x
-    sta ch_atk, x
-    dex
-    bpl @canal
-
     lda #$00
     sta $4001
     sta $4005
     lda #$0F
     sta $4015
+    lda #$00
+    jmp troca_musica
+
+; --------------------------------------------------------------------------
+;  Troca a musica ativa (A = indice, ver musica_offset/MUSICAS). So chame
+;  entre desliga_tela/liga_tela: com o NMI desligado da pra escrever
+;  ch_ptr_lo/hi em duas passadas sem risco da musica ler o par pela metade.
+; --------------------------------------------------------------------------
+troca_musica:
+    tax
+    lda musica_offset, x
+    tay                      ; y = indice inicial dessa musica em fluxo_lo/hi
+    ldx #$00                 ; x = canal (0..2)
+@canal:
+    lda fluxo_lo, y
+    sta ch_ptr_lo, x
+    sta ch_base_lo, x
+    lda fluxo_hi, y
+    sta ch_ptr_hi, x
+    sta ch_base_hi, x
+    lda #$01
+    sta ch_wait, x
+    lda #$00
+    sta ch_vol, x
+    sta ch_atk, x
+    iny
+    inx
+    cpx #$03
+    bne @canal
     rts
 
 musica_tick:
@@ -1598,10 +1722,10 @@ proxima_nota:
     cmp #$FF
     bne @tem_nota
 
-    lda fluxo_lo, x         ; fim do fluxo: a musica volta pro comeco
+    lda ch_base_lo, x       ; fim do fluxo: a musica volta pro comeco (da musica ativa)
     sta ptr
     sta ch_ptr_lo, x
-    lda fluxo_hi, x
+    lda ch_base_hi, x
     sta ptr+1
     sta ch_ptr_hi, x
     lda (ptr), y
@@ -1699,6 +1823,7 @@ aplica_volume:
 ;  Dados
 ; ==========================================================================
 duty_canal:  .byte $40, $80, $00
+musica_offset: .byte 0, 3     ; onde cada musica comeca em fluxo_lo/hi (3 canais cada)
 ; Amanda: 8 tiles, coluna esquerda de cima a baixo e depois a direita
 ama_dx:      .byte 0, 0, 0, 0,  8, 8, 8, 8
 ama_dx_esp:  .byte 8, 8, 8, 8,  0, 0, 0, 0
@@ -1728,6 +1853,7 @@ fim_fala_tab:    .byte N_FALA_VICTOR, N_FALAS ; e em que termina
 
 txt_victor:  .byte "VICTOR", $00
 txt_amanda:  .byte "AMANDA", $00
+txt_aviso_start: .byte "APERTE START PARA COMECAR", $00
 
 pulso:       .byte $16, $26, $36, $26, $16, $06, $06, $06
 

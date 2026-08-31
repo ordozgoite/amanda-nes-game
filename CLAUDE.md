@@ -78,6 +78,17 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   volta, e o `cmp` de teto comparava o valor ja embrulhado -- que parecia
   pequeno, entao passava no teste. Depois de somar, cheque o carry (`bcs`)
   antes do `cmp`: se estourou 255, ja passou de qualquer teto menor.
+- **Trocar de musica no meio do jogo (`troca_musica`) mexe em `ch_ptr_lo/hi`
+  em duas escritas separadas.** Se o NMI disparar entre elas, a musica le um
+  ponteiro Frankenstein (byte baixo de uma nota, alto de outra) e ou trava
+  ou toca lixo. So chame `troca_musica` entre `desliga_tela`/`liga_tela`:
+  com a tela apagada o NMI nem dispara (`desliga_tela` zera `PPUCTRL`), entao
+  a troca fica atomica de graca.
+- **Testar a troca de musica pelo valor do periodo e enganoso.** Uma nota
+  pode segurar o mesmo periodo por dezenas de quadros (a primeira do refrao
+  aguenta 60), entao "os proximos 2 quadros batem" pode travar no MEIO da
+  nota, nao no comeco dela -- e a partir dali tudo desalinha. So vale
+  comparar o laco inteiro contra o esperado (ver `test_musica.py`).
 
 ## Estado atual
 
