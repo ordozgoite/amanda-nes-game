@@ -62,16 +62,24 @@ ANDA_MIN    = 8
 ANDA_MAX    = 232
 CHAO_Y      = 192
 TILE_VICTOR = 16
-VICTOR_X    = 176   ; atras da mesa, com a bandeja na frente dele
+VICTOR_X    = 176   ; atras da mesa, com a bandeja na frente dele -- e onde ele senta
 VICTOR_Y    = 152
 AMANDA_SENTADA_X = 200   ; do lado direito dele, no mesmo banco da mesa
 PERTO_MIN   = 152   ; faixa de x em que o aviso aparece
 PERTO_MAX   = 201
-TILE_BOCA_E = 22    ; Victor de boca aberta
+TILE_BOCA_E = 22    ; Victor sentado de boca aberta
 TILE_BOCA_D = 23
 TILE_AVISO  = 24    ; a caixinha do "B"
 TILE_AMA_BOCA_E = 28  ; Amanda de boca aberta (so na caixa dela)
 TILE_AMA_BOCA_D = 29
+
+; Victor comeca em pe, um pouco deslocado da cadeira -- so senta quando ela
+; pede, na parte PARTE_SENTAR do dialogo (ver passo_dialogo).
+VICTOR_EMPE_X   = 160
+VICTOR_EMPE_Y   = CHAO_Y
+TILE_VICTOR_EMPE = 30    ; ver tools/make_sprites.py -- "Victor em pe 30-45"
+TILE_BOCA_EMPE_E = 46
+TILE_BOCA_EMPE_D = 47
 
 ; O balao de fala fica sempre nas colunas 8-23 (16 tiles), mas muda de
 ; LINHA conforme quem esta falando: caixa 0 (Victor) comeca na linha 8,
@@ -157,9 +165,19 @@ perto:       .res 1         ; 1 = a Amanda esta ao alcance do Victor
 oam_attr:    .res 1         ; proprio da OAM: 'tmp' e da musica, que roda no NMI
 abre_jogo:   .res 1         ; 1 = o dialogo fechou; o laco principal troca de tela
 
-; --- animacao de sentar, disparada depois de PARTE_SENTAR (ver passo_dialogo) ---
+; --- animacao de sentar da Amanda, disparada ao apertar B perto dele ---
 senta_fase:    .res 1       ; 0 fora, 1 andando ate o x do banco, 2 subindo ate a mesa
 amanda_sentada:.res 1       ; 1 = desenha ela sentada (cabeca+tronco, sem pernas)
+
+; --- o Victor: comeca em pe e anda ate a cadeira quando o dialogo pede
+; (PARTE_SENTAR, ver passo_dialogo). Mesma ideia da animacao da Amanda, so
+; que sem espelhar -- ele so anda pra direita, da posicao em pe ate a mesa.
+victor_x:      .res 1
+victor_y:      .res 1
+victor_frame:  .res 1       ; 0 ou 1, os dois passos (em pe/andando)
+victor_anim:   .res 1
+victor_senta_fase: .res 1   ; 0 fora, 1 andando, 2 subindo, 3 pronto
+victor_sentado:.res 1       ; 0 = desenha em pe (andando), 1 = desenha sentado
 
 ; --- minigame: pizzas caindo ---
 ; 'jogo_tmp' e o scratch do laco principal (nao pode usar 'ptr'/'tmp':
@@ -514,10 +532,15 @@ atualiza_cena:
     jmp carrega_jogo
 @sem_transicao:
 
-    lda senta_fase            ; animando ate o banco? nao le botao nenhum
+    lda senta_fase            ; ela animando ate o banco? nao le botao nenhum
     beq @sem_animacao
     jmp atualiza_senta
 @sem_animacao:
+
+    lda victor_senta_fase     ; ele animando ate o banco? idem
+    beq @sem_animacao_victor
+    jmp atualiza_senta_victor
+@sem_animacao_victor:
 
     lda dialogo
     beq @livre
@@ -534,6 +557,7 @@ atualiza_cena:
     lda #$00
     sta dlg_lin
 @so_sprites:
+    jsr desenha_victor
     jsr boca_victor
     jsr desenha_amanda
     jsr boca_amanda
@@ -554,15 +578,14 @@ atualiza_cena:
     lda botoes_novos
     and #BTN_B
     beq @sprites
-    lda #$01                ; abre o balao
-    sta dialogo
+    lda #$01                ; ela senta primeiro -- o dialogo so abre quando
+    sta senta_fase           ; a animacao terminar (ver atualiza_senta)
     lda #$00
-    sta dlg_lin
-    sta dlg_box              ; comeca sempre pela caixa do Victor
-    sta dlg_parte             ; primeira parte do dialogo inteiro
-    sta player_frame          ; a boca aberta so existe no quadro 0 da cabeca
-
+    sta perto                ; senao o aviso "B" fica flutuando sobre ele
+                              ; enquanto ela anda ate a cadeira (calcula_perto
+                              ; nao roda mais durante a animacao, pra reler)
 @sprites:
+    jsr desenha_victor
     jsr boca_victor
     jsr desenha_amanda
     jsr boca_amanda
@@ -635,10 +658,12 @@ calcula_perto:
     rts
 
 ; --------------------------------------------------------------------------
-;  O aviso "B" flutuando sobre a cabeca dele (sprites 14 e 15)
+;  O aviso "B" flutuando sobre a cabeca dele (sprite 16, longe da faixa
+;  8-15 que o Victor usa -- em pe ele precisa de 8 sprites, nao so 6).
+;  A posicao segue victor_x/victor_y, que mudam quando ele anda ate sentar.
 ; --------------------------------------------------------------------------
 aviso_b:
-    ldy #$38                ; sprite 14 = byte 56 da OAM
+    ldy #$40                ; sprite 16 = byte 64 da OAM
     lda dialogo
     bne @esconde
     lda perto
@@ -647,10 +672,14 @@ aviso_b:
     lda frame_count         ; sobe e desce 2 pixels, pra chamar atencao
     and #$10
     beq @baixo
-    lda #(VICTOR_Y - 14)
-    bne @poe
+    lda victor_y
+    sec
+    sbc #14
+    jmp @poe
 @baixo:
-    lda #(VICTOR_Y - 12)
+    lda victor_y
+    sec
+    sbc #12
 @poe:
     sta oam, y
     sta oam+4, y
@@ -661,7 +690,7 @@ aviso_b:
     lda #$02                ; paleta 2
     sta oam+2, y
     sta oam+6, y
-    lda #VICTOR_X
+    lda victor_x
     sta oam+3, y
     clc
     adc #$08
@@ -674,27 +703,33 @@ aviso_b:
     rts
 
 ; --------------------------------------------------------------------------
-;  A boca dele abre e fecha enquanto o texto sai
+;  A boca dele abre e fecha enquanto o texto sai. desenha_victor ja redesenha
+;  a boca fechada todo quadro (em pe ou sentado), entao aqui so precisa
+;  sobrescrever com o tile aberto -- sem @fechada pra restaurar na mao.
 ; --------------------------------------------------------------------------
 boca_victor:
     lda dialogo
     cmp #$02                ; so mexe a boca enquanto esta escrevendo
-    bne @fechada
+    bne @fim
     lda dlg_box
-    bne @fechada             ; caixa da Amanda: a boca dele fica parada
+    bne @fim                 ; caixa da Amanda: a boca dele fica parada
     lda frame_count
     and #$08
-    beq @fechada
+    beq @fim
+    lda victor_sentado
+    bne @sentado
+    lda #TILE_BOCA_EMPE_E    ; em pe: cabeca ocupa sprites 8-15 (4 tiles por
+    sta oam+37               ; coluna) -- metade esquerda no byte 37, direita
+    lda #TILE_BOCA_EMPE_D    ; no 53 (ver monta_oam_victor_empe)
+    sta oam+53
+    rts
+@sentado:
     lda #TILE_BOCA_E
     sta oam+37
     lda #TILE_BOCA_D
     sta oam+49
     rts
-@fechada:
-    lda #17
-    sta oam+37
-    lda #20
-    sta oam+49
+@fim:
     rts
 
 ; --------------------------------------------------------------------------
@@ -732,7 +767,7 @@ atualiza_senta:
     beq @andando
     cmp #$02
     beq @subindo
-    jmp avanca_apos_sentar    ; fase 3: a subida terminou, volta pro dialogo
+    jmp abre_dialogo_apos_sentar   ; fase 3: ela sentou, agora sim comeca o dialogo
 
 @andando:
     lda player_x
@@ -777,6 +812,75 @@ atualiza_senta:
     sta senta_fase
 
 @desenha:
+    jsr desenha_victor
+    jsr boca_victor
+    jsr desenha_amanda
+    jsr boca_amanda
+    rts
+
+; ---- ela acabou de sentar: abre o dialogo do zero (parte 0) ----
+abre_dialogo_apos_sentar:
+    lda #$00
+    sta senta_fase
+    sta dlg_parte             ; primeira parte do dialogo inteiro
+    sta dlg_box               ; comeca sempre pela caixa do Victor
+    sta dlg_lin
+    lda #$01
+    sta dialogo
+    lda #$00
+    sta player_frame          ; a boca aberta so existe no quadro 0 da cabeca
+    rts
+
+; --------------------------------------------------------------------------
+;  Ele anda da posicao em pe ate a cadeira e senta -- mesma logica da
+;  atualiza_senta, so que so anda pra direita (nunca precisa espelhar) e o
+;  alvo e a cadeira dele (VICTOR_X/VICTOR_Y). Disparada em PARTE_SENTAR
+;  (ver passo_dialogo), quando a fala dela ("vem senta aqui do meu lado")
+;  termina de fechar.
+; --------------------------------------------------------------------------
+atualiza_senta_victor:
+    lda victor_senta_fase
+    cmp #$01
+    beq @andando
+    cmp #$02
+    beq @subindo
+    jmp avanca_apos_sentar    ; fase 3: ele sentou, volta pro resto do dialogo
+
+@andando:
+    lda victor_x
+    cmp #VICTOR_X
+    beq @chegou_x
+    inc victor_x              ; a cadeira dele fica sempre a direita da posicao em pe
+    inc victor_anim
+    lda victor_anim
+    and #$07                  ; troca de passo a cada 8 quadros, igual a Amanda
+    bne @desenha
+    lda victor_frame
+    eor #$01
+    sta victor_frame
+    jmp @desenha
+@chegou_x:
+    lda #$02                  ; parou de andar: agora sobe ate a mesa
+    sta victor_senta_fase
+    lda #$00
+    sta victor_frame
+    sta victor_anim
+    jmp @desenha
+
+@subindo:
+    lda victor_y
+    cmp #VICTOR_Y
+    beq @chegou_y
+    dec victor_y
+    jmp @desenha
+@chegou_y:
+    lda #$01
+    sta victor_sentado         ; a partir de agora ele desenha sentado
+    lda #$03
+    sta victor_senta_fase
+
+@desenha:
+    jsr desenha_victor
     jsr boca_victor
     jsr desenha_amanda
     jsr boca_amanda
@@ -785,7 +889,7 @@ atualiza_senta:
 ; ---- volta pro dialogo na parte seguinte a PARTE_SENTAR ----
 avanca_apos_sentar:
     lda #$00
-    sta senta_fase
+    sta victor_senta_fase
     inc dlg_parte
     ldx dlg_parte
     lda falante_tab, x
@@ -876,7 +980,7 @@ carrega_cena:
     sta ptr
     lda #>chr_sprites
     sta ptr+1
-    lda #2
+    lda #3                  ; 3 paginas: Amanda + Victor sentado + Victor em pe
     sta paginas
     jsr copia_ppu
 
@@ -896,7 +1000,16 @@ carrega_cena:
     jsr carrega_paletas
 
     jsr esconde_sprites
-    jsr oam_victor          ; ele ja esta la, sentado, esperando
+
+    lda #VICTOR_EMPE_X       ; ele comeca em pe, deslocado da cadeira
+    sta victor_x
+    lda #VICTOR_EMPE_Y
+    sta victor_y
+    lda #$00
+    sta victor_frame
+    sta victor_anim
+    sta victor_senta_fase
+    sta victor_sentado
 
     lda #40                 ; a Amanda entra pela esquerda
     sta player_x
@@ -910,6 +1023,7 @@ carrega_cena:
     sta perto
     sta senta_fase
     sta amanda_sentada
+    jsr desenha_victor
     jsr monta_oam
     jsr aviso_b
 
@@ -1060,8 +1174,23 @@ monta_oam:
     rts
 
 ; --------------------------------------------------------------------------
-;  O Victor sentado. Nao se move, entao a OAM dele e montada uma vez so,
-;  na entrada da cena, a partir do sprite 8.
+;  Desenha o Victor, sentado ou em pe, conforme a fase atual.
+; --------------------------------------------------------------------------
+desenha_victor:
+    lda victor_sentado
+    bne @sentado
+    jmp monta_oam_victor_empe
+@sentado:
+    jmp oam_victor
+
+; --------------------------------------------------------------------------
+;  O Victor sentado: 6 sprites (sem pernas, a mesa esconde) a partir do
+;  sprite 8. So sobra estatico depois que ele senta, mas redesenha todo
+;  quadro assim mesmo -- e o mesmo custo de sempre e evita ter que lembrar
+;  de chamar isso so uma vez em cada lugar que ele pode passar a sentado.
+;  Tambem esconde os sprites 14-15: quando ele estava em pe (8 sprites,
+;  ver monta_oam_victor_empe) essas duas pernas ficavam la; sentado, ninguem
+;  mais escreve nelas, entao sem isso o ultimo quadro em pe ficaria preso.
 ; --------------------------------------------------------------------------
 oam_victor:
     ldx #$00
@@ -1091,6 +1220,57 @@ oam_victor:
     iny
     inx
     cpx #$06
+    bne @loop
+
+    lda #$FF                 ; esconde a sobra dos sprites 14-15 (pernas
+    sta oam+56               ; do "Victor em pe", nao usadas sentado)
+    sta oam+60
+    rts
+
+; --------------------------------------------------------------------------
+;  O Victor em pe/andando: 8 sprites (cabeca+torso+pernas, 2 colunas) a
+;  partir do sprite 8 -- mesma ideia da monta_oam da Amanda, so que sem
+;  espelhar (ele nunca anda pra esquerda nesta cena).
+; --------------------------------------------------------------------------
+monta_oam_victor_empe:
+    lda victor_frame
+    beq @base0
+    lda #$08
+    bne @guarda
+@base0:
+    lda #$00
+@guarda:
+    sta tile_base
+
+    ldx #$00
+    ldy #$20                ; sprite 8 = byte 32 da OAM
+@loop:
+    lda victor_y
+    clc
+    adc vic_empe_dy, x
+    sta oam, y
+
+    txa
+    clc
+    adc tile_base
+    clc
+    adc #TILE_VICTOR_EMPE
+    sta oam+1, y
+
+    lda vic_empe_pal, x
+    sta oam+2, y
+
+    lda victor_x
+    clc
+    adc vic_empe_dx, x
+    sta oam+3, y
+
+    iny
+    iny
+    iny
+    iny
+    inx
+    cpx #$08
     bne @loop
     rts
 
@@ -1163,11 +1343,11 @@ passo_dialogo:
     lda dlg_parte
     cmp #PARTE_SENTAR
     bne @sem_sentar
-    lda #$00                  ; era o convite pra sentar: anima em vez de
+    lda #$00                  ; era o convite pra ele sentar: anima em vez de
     sta dialogo                ; abrir a proxima caixa direto. Zerar 'dialogo'
     lda #$01                   ; e essencial -- sem isso o passo_dialogo reentra
-    sta senta_fase             ; em @fechando todo NMI (dialogo ainda seria 4) e
-    rts                        ; forca senta_fase de volta pra 1 pra sempre.
+    sta victor_senta_fase      ; em @fechando todo NMI (dialogo ainda seria 4) e
+    rts                        ; forca victor_senta_fase de volta pra 1 pra sempre.
 @sem_sentar:
     inc dlg_parte
     lda dlg_parte
@@ -2128,6 +2308,13 @@ ama_pal:     .byte 0, 0, 1, 1,  0, 0, 1, 1
 vic_dx:      .byte 0, 0, 0,  8, 8, 8
 vic_dy:      .byte 0, 8, 16, 0, 8, 16
 vic_pal:     .byte 2, 2, 3, 2, 2, 3
+; Victor em pe: 8 tiles, coluna esquerda de cima a baixo (cabeca, cabeca,
+; torso, pernas) e depois a direita -- mesmo padrao da Amanda. As pernas
+; reaproveitam a paleta 2 (cabeca): sao pretas, sem pele exposta, entao nao
+; colidem com o tom de pele nela (ver make_sprites.py sobre o chao/pele).
+vic_empe_dx: .byte 0, 0, 0, 0,  8, 8, 8, 8
+vic_empe_dy: .byte 0, 8, 16, 24, 0, 8, 16, 24
+vic_empe_pal:.byte 2, 2, 3, 2,  2, 2, 3, 2
 
 ; pecas da moldura, por tipo de linha: topo, meio, base
 borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5

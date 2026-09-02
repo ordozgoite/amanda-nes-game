@@ -102,18 +102,21 @@ def main():
     ocupados = sum(1 for i in range(960) if nes.bus.vram[0x2000 + i])
     check("cenario preenche a tela", ocupados > 800, f"{ocupados}/960 tiles")
     spr = nes.sprites()
-    check("14 sprites: Amanda (8) + Victor (6)", len(spr) == 14, f"{len(spr)} sprites")
+    check("16 sprites: Amanda (8) + Victor em pe (8)", len(spr) == 16, f"{len(spr)} sprites")
     amanda = [nes.bus.oam[i:i+4] for i in range(0, 32, 4)]
-    victor = [nes.bus.oam[i:i+4] for i in range(32, 56, 4)]
+    victor = [nes.bus.oam[i:i+4] for i in range(32, 64, 4)]
     check("Amanda tem 16x32 (4 tiles de altura)",
           sorted({s[0] for s in amanda}) == [192, 200, 208, 216])
     # cabeca tem paleta propria (cabelo/laco); tronco e pernas dividem a
     # mesma (as pernas nao precisam de cor extra, e uma so ja da conta)
     check("paletas por linha de tile", [s[2] & 3 for s in amanda] == [0,0,1,1,0,0,1,1],
           str([s[2] & 3 for s in amanda]))
-    # cabeca dele = paleta 2, torso = paleta 3 (onde mora o logo da camisa)
-    check("Victor sentado, parado a mesa",
-          [s[2] & 3 for s in victor] == [2,2,3,2,2,3] and {s[3] for s in victor} == {176, 184})
+    # cabeca dele = paleta 2, torso = paleta 3 (logo), pernas reaproveitam a 2
+    # (pretas, sem pele -- ver make_sprites.py); ele comeca em pe, deslocado
+    # da cadeira (x=160), esperando ela chegar
+    check("Victor em pe, deslocado da cadeira",
+          [s[2] & 3 for s in victor] == [2,2,3,2,2,2,3,2] and {s[3] for s in victor} == {160, 168},
+          f"paletas={[s[2] & 3 for s in victor]} xs={sorted({s[3] for s in victor})}")
     check("tiles dos personagens na pattern table 0",
           sum(1 for i in range(0x1000) if nes.bus.vram[i]) > 100)
 
@@ -173,37 +176,58 @@ def main():
     for _ in range(12): d.frame()
     d.frame(BTN_START)
     for _ in range(70): d.frame()      # o respiro pro plin, antes da cena carregar
-    # longe dele: nada de aviso
-    check("longe, sem aviso", d.bus.ram[sym["perto"]] == 0 and d.bus.oam[56] >= 0xEF)
+    # longe dele: nada de aviso (sprite 16 = byte 64 da OAM)
+    check("longe, sem aviso", d.bus.ram[sym["perto"]] == 0 and d.bus.oam[64] >= 0xEF)
     for _ in range(200):
         d.frame(BTN_RIGHT)
         if d.bus.ram[sym["perto"]]: break
     d.frame()
     check("chegando perto, o aviso B aparece",
-          d.bus.oam[56] < 0xEF and d.bus.oam[57] == 24,
-          f"y={d.bus.oam[56]} tile={d.bus.oam[57]}")
-    check("o aviso fica sobre a cabeca dele",
-          d.bus.oam[59] == 176 and d.bus.oam[56] < 152)
+          d.bus.oam[64] < 0xEF and d.bus.oam[65] == 24,
+          f"y={d.bus.oam[64]} tile={d.bus.oam[65]}")
+    check("o aviso fica sobre a cabeca dele, em pe (x=160, nao a cadeira)",
+          d.bus.oam[67] == 160 and d.bus.oam[64] < 192)
+
+    # B nao abre o balao na hora: ela senta do lado dele primeiro (mesma
+    # animacao de sempre, so que disparada aqui em vez de no meio do
+    # dialogo -- ver atualiza_cena/atualiza_senta em src/jogo.s)
+    d.frame(BTN_B)
+    for _ in range(150):
+        d.frame()
+        if d.bus.ram[sym["dialogo"]] != 0: break
+    check("ela sentou antes do balao abrir",
+          d.bus.ram[sym["amanda_sentada"]] == 1
+          and d.bus.ram[sym["player_x"]] == 200
+          and d.bus.ram[sym["player_y"]] == 152,
+          f"sentada={d.bus.ram[sym['amanda_sentada']]} x={d.bus.ram[sym['player_x']]} "
+          f"y={d.bus.ram[sym['player_y']]}")
+    # sentada: so cabeca+tronco (sprites 0,1,2,4,5,6); pernas (sprites 3 e 7)
+    # escondidas, como as do Victor por tras da mesa
+    check("as pernas dela ficam escondidas, sentada",
+          d.bus.oam[3*4] >= 0xEF and d.bus.oam[7*4] >= 0xEF,
+          f"y3={d.bus.oam[12]} y7={d.bus.oam[28]}")
+    check("cabeca e tronco continuam visiveis, sentada",
+          d.bus.oam[0] < 0xEF and d.bus.oam[2*4] < 0xEF)
+    check("so entao o balao abre", d.bus.ram[sym["dialogo"]] in (1, 2),
+          f"estado {d.bus.ram[sym['dialogo']]}")
+    check("o aviso some com o balao aberto", d.bus.oam[64] >= 0xEF)
 
     x_antes = d.bus.ram[sym["player_x"]]
-    d.frame(BTN_B)
-    for _ in range(12): d.frame()
-    check("B abre o balao", d.bus.ram[sym["dialogo"]] in (1, 2),
-          f"estado {d.bus.ram[sym['dialogo']]}")
-    check("o aviso some com o balao aberto", d.bus.oam[56] >= 0xEF)
     for _ in range(30): d.frame(BTN_RIGHT)
     check("ela nao anda enquanto ele fala",
           d.bus.ram[sym["player_x"]] == x_antes,
           f"{x_antes} -> {d.bus.ram[sym['player_x']]}")
 
-    # a boca abre e fecha enquanto escreve
+    # a boca abre e fecha enquanto escreve -- nesta primeira parte ele ainda
+    # esta em pe (16, 46) = tiles do "Victor em pe"; so senta depois do
+    # convite dela, mais adiante nesta mesma conversa
     bocas = set()
     bocas_amanda = set()
     for _ in range(40):
         d.frame()
         bocas.add(d.bus.oam[37])
         bocas_amanda.add(d.bus.oam[5])
-    check("a boca dele mexe enquanto fala", bocas == {17, 22}, str(sorted(bocas)))
+    check("a boca dele mexe enquanto fala, em pe", bocas == {31, 46}, str(sorted(bocas)))
     check("a boca DELA fica parada na fala do Victor", bocas_amanda == {1},
           str(sorted(bocas_amanda)))
     # o tique tem que pulsar, nao zunir: o volume liga e desliga
@@ -218,7 +242,7 @@ def main():
     check("o texto termina", d.bus.ram[sym["dialogo"]] == 3)
     check("o tique silencia no fim", d.bus.apu[0x0C] == 0x10,
           f"${d.bus.apu[0x0C]:02X}")
-    check("a boca para de mexer", d.bus.oam[37] == 17)
+    check("a boca para de mexer, em pe", d.bus.oam[37] == 31)
     # a etiqueta "VICTOR:" (fonte mini) fica na linha 9, uma acima da mensagem
     NOME_VICTOR = [255, 249, 247, 254, 252, 253, 245]
     NOME_AMANDA = [246, 250, 246, 251, 248, 246, 245]
@@ -250,7 +274,7 @@ def main():
             d.frame()
             if d.bus.oam[5] == TILE_AMA_BOCA_E:
                 a_boca_mexeu[1] = True
-            if d.bus.oam[37] == 22:
+            if d.bus.oam[37] in (22, 46):   # 22 sentado, 46 em pe (ainda nao sentou)
                 a_boca_mexeu[0] = True
         check(f"parte {parte}: o texto termina", d.bus.ram[sym["dialogo"]] == 3,
               f"dialogo={d.bus.ram[sym['dialogo']]}")
@@ -265,20 +289,22 @@ def main():
         if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
             coracao = d.bus.vram[0x2000 + (linha + 1)*32 + 9 + 6]
             check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
-        if parte == 3:   # a primeira parte depois do convite pra sentar
-            check("a animacao de sentar terminou: ela esta sentada",
-                  d.bus.ram[sym["amanda_sentada"]] == 1)
-            check("parada no x do banco, do lado do Victor",
-                  d.bus.ram[sym["player_x"]] == 200, f"x={d.bus.ram[sym['player_x']]}")
-            check("na mesma altura da mesa do Victor",
-                  d.bus.ram[sym["player_y"]] == 152, f"y={d.bus.ram[sym['player_y']]}")
-            # sentada: so cabeca+tronco (sprites 0,1,2,4,5,6); pernas
-            # (sprites 3 e 7) escondidas, como as do Victor por tras da mesa
-            check("as pernas dela ficam escondidas, sentada",
-                  d.bus.oam[3*4] >= 0xEF and d.bus.oam[7*4] >= 0xEF,
-                  f"y3={d.bus.oam[12]} y7={d.bus.oam[28]}")
-            check("cabeca e tronco continuam visiveis, sentada",
-                  d.bus.oam[0] < 0xEF and d.bus.oam[2*4] < 0xEF)
+        if parte == 3:   # a primeira parte depois do convite pra ELE sentar
+            check("a animacao de sentar do Victor terminou: ele esta sentado",
+                  d.bus.ram[sym["victor_sentado"]] == 1)
+            check("ele foi pra cadeira dele (x=176)",
+                  d.bus.ram[sym["victor_x"]] == 176, f"x={d.bus.ram[sym['victor_x']]}")
+            check("na mesma altura da mesa (y=152)",
+                  d.bus.ram[sym["victor_y"]] == 152, f"y={d.bus.ram[sym['victor_y']]}")
+            # sentado: volta a usar os 6 sprites de sempre (tiles 16-21); os
+            # 2 extras que ele usava em pe (pernas, sprites 14-15) somem
+            victor_oam = [d.bus.oam[i:i+4] for i in range(32, 64, 4)]
+            check("Victor sentado usa os tiles 16-21",
+                  [s[1] for s in victor_oam[:6]] == list(range(16, 22)),
+                  str([s[1] for s in victor_oam[:6]]))
+            check("os 2 sprites extras do 'em pe' ficam escondidos",
+                  victor_oam[6][0] >= 0xEF and victor_oam[7][0] >= 0xEF,
+                  f"y14={victor_oam[6][0]} y15={victor_oam[7][0]}")
         d.frame(BTN_B)
         for _ in range(14): d.frame()
     check("as bocas mexeram nas partes de cada um", all(a_boca_mexeu.values()),

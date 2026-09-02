@@ -42,18 +42,25 @@ for _ in range(200):
     nes.frame(BTN_RIGHT)
     if nes.bus.ram[sym["perto"]]:
         break
-nes.frame(BTN_B)
-for _ in range(6):
+nes.frame(BTN_B)               # ela vai sentar do lado dele antes do dialogo abrir
+for _ in range(25):
     nes.frame()
-render(nes).save("build/jogo-5-fala-amanda.png")
-print("build/jogo-5-fala-amanda.png")
+render(nes).save("build/jogo-5-ela-senta.png")
+print("build/jogo-5-ela-senta.png")
+
+for _ in range(150):            # espera a sentada terminar e o balao abrir
+    nes.frame()
+    if nes.bus.ram[sym["dialogo"]]:
+        break
 
 # o dialogo inteiro tem 13 partes agora (ver FALANTE_GRUPO em
-# tools/make_scene.py); so tira foto de algumas -- a primeira, a do
-# coracaozinho (parte 8) e a ultima -- e passa pelas outras direto
+# tools/make_scene.py); so tira foto de algumas -- a primeira, a que abre
+# logo depois dele sentar (parte 3, ver PARTE_SENTAR), a do coracaozinho
+# (parte 8) e a ultima -- e passa pelas outras direto
 CAPTURAS = {0: "build/jogo-6-fala-fim.png",
-            8: "build/jogo-6a-fala-coracao.png",
-            12: "build/jogo-6b-fala-ultima.png"}
+            3: "build/jogo-6a-victor-sentou.png",
+            8: "build/jogo-6b-fala-coracao.png",
+            12: "build/jogo-6c-fala-ultima.png"}
 for parte in range(13):
     for _ in range(400):
         nes.frame()

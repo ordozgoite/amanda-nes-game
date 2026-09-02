@@ -107,6 +107,24 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   valor lido entre quadros parecia estavel (sempre a mesma fase), porque a
   leitura via teste so via o resultado JA sobrescrito pelo NMI seguinte --
   so apareceu de verdade imprimindo o estado quadro a quadro.
+- **Um personagem com duas poses que usam numeros diferentes de sprites da
+  OAM precisa esconder a sobra na mao ao trocar pra pose menor.** O Victor
+  em pe usa 8 sprites (cabeca+torso+pernas, ver `monta_oam_victor_empe`);
+  sentado usa so 6 (a mesa esconde as pernas, ver `oam_victor`). Quando ele
+  senta, `oam_victor` passa a rodar no lugar da rotina de 8 sprites -- mas
+  se ninguem mexer explicitamente nos 2 sprites que sobraram (14 e 15), eles
+  ficam presos pra sempre com o ultimo quadro da perna "em pe", porque
+  nenhuma rotina volta a escrever ali. `oam_victor` esconde os dois (Y=$FF)
+  no fim, mesmo sem usa-los.
+- **Uma flag calculada so em UM caminho do laco fica com o valor antigo
+  quando esse caminho e pulado por uma maquina de estado.** `calcula_perto`
+  (e portanto `perto`) so roda dentro do ramo "andando livre" de
+  `atualiza_cena`; enquanto uma animacao de sentar esta em andamento, esse
+  ramo nem executa. Resultado: `perto` continuava valendo 1 (do instante em
+  que o B foi apertado) durante toda a caminhada dela ate a cadeira, e o
+  aviso "B" ficava flutuando bobo sobre a cena. Precisou zerar `perto` na
+  mao no momento de disparar a animacao, ja que ninguem mais ia recalcula-lo
+  ate ela terminar.
 
 ## Estado atual
 

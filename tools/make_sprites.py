@@ -151,6 +151,66 @@ VICTOR_FALANDO = list(VICTOR)
 VICTOR_FALANDO[10] = linha(('.',2), ('1',12), ('.',2))
 VICTOR_FALANDO[11] = linha(('.',2), ('1',12), ('.',2))
 
+# ====================================================== Victor em pe
+# No comeco da cena ele espera em pe (a Amanda que chega e senta primeiro,
+# convidando ELE a se sentar do lado dela -- so faz sentido a fala "vem,
+# senta aqui do meu lado" se for ele quem se move). Pra isso ele precisa
+# de corpo inteiro, com dois quadros de passada, igual a Amanda.
+#
+# Cabeca e barba sao as MESMAS 14 linhas do Victor sentado (so ganham mais
+# duas, alongando o pescoco/colarinho ainda em pele -- sem chegar na
+# camisa ainda). Por isso o indice 3 (cinza da camisa) nao aparece nessas
+# 16 linhas: fica livre pro que as pernas precisam, sem gastar uma
+# paleta nova (ja estao as 4 ocupadas -- ver make_scene.py).
+VICTOR_CABECA_EMPE = VICTOR[0:14] + [
+    linha(('.',3), ('2',10), ('.',3)),
+    linha(('.',2), ('2',12), ('.',2)),
+]
+VICTOR_CABECA_EMPE_FALANDO = list(VICTOR_CABECA_EMPE)
+VICTOR_CABECA_EMPE_FALANDO[10] = linha(('.',2), ('1',12), ('.',2))
+VICTOR_CABECA_EMPE_FALANDO[11] = linha(('.',2), ('1',12), ('.',2))
+
+# Torso: os mesmos ombros e o mesmo swoosh do sentado (linhas 16-20 do
+# Victor original), so trocando "maos na mesa" por bracos ao longo do
+# corpo -- nao ha mesa na frente dele agora.
+VICTOR_TORSO_EMPE = [
+    linha(('2',1), ('3',14), ('2',1)),
+    linha(('2',1), ('3',14), ('2',1)),
+    linha(('2',1), ('3',3), ('1',1), ('3',10), ('2',1)),          # swoosh: ponta
+    linha(('2',1), ('3',2), ('1',3), ('3',9), ('2',1)),           # swoosh: risco
+    linha(('2',1), ('3',14), ('2',1)),
+    linha(('2',1), ('3',14), ('2',1)),
+    linha(('.',1), ('2',2), ('3',10), ('2',2), ('.',1)),
+    linha(('.',16)),
+]
+
+# Short preto ate o sapato, sem pele exposta embaixo -- mesma solucao da
+# Amanda (ver AMANDA_PERNAS acima): o tom de pele do NES bate exatamente
+# com a cor do chao da pizzaria, entao a perna precisa ficar coberta o
+# tempo todo. O cinza da camisa (indice 3) reaparece so como detalhe do
+# tenis, ja que essa paleta e a mesma da cabeca.
+VICTOR_PERNAS_EMPE_A = [
+    linha(('.',3), ('1',10), ('.',3)),
+    linha(('.',3), ('1',10), ('.',3)),
+    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
+    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
+    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
+    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
+    linha(('.',3), ('3',4), ('.',2), ('3',4), ('.',3)),           # tenis
+    linha(('.',16)),
+]
+
+VICTOR_PERNAS_EMPE_B = [
+    linha(('.',3), ('1',10), ('.',3)),
+    linha(('.',3), ('1',10), ('.',3)),
+    linha(('.',3), ('1',3), ('.',4), ('1',3), ('.',3)),
+    linha(('.',3), ('1',3), ('.',4), ('1',3), ('.',3)),
+    linha(('.',2), ('1',3), ('.',6), ('1',3), ('.',2)),           # passada mais aberta
+    linha(('.',2), ('1',3), ('.',6), ('1',3), ('.',2)),
+    linha(('.',2), ('3',4), ('.',4), ('3',4), ('.',2)),
+    linha(('.',16)),
+]
+
 # ---- a pizza crek que cai no minigame: 16x8, retangular ----
 PIZZA = [
     linha(('1',16)),                                              # crosta, borda de cima
@@ -214,15 +274,32 @@ def build():
     falando_a = fatiar(amanda_falando)
     saida.append(encode_tile(falando_a[1]))    # tile 28: metade esquerda
     saida.append(encode_tile(falando_a[5]))    # tile 29: metade direita
-    while len(saida) < 32:                     # duas paginas de 256 bytes
+
+    # Victor em pe: cabeca+torso sao os mesmos nos dois quadros de
+    # passada, so a perna muda -- por isso repete cabeca+torso nos dois
+    # (igual a Amanda ja faz), em vez de tentar economizar tile.
+    assert len(VICTOR_CABECA_EMPE) == 16
+    victor_empe_a = VICTOR_CABECA_EMPE + VICTOR_TORSO_EMPE + VICTOR_PERNAS_EMPE_A
+    victor_empe_b = VICTOR_CABECA_EMPE + VICTOR_TORSO_EMPE + VICTOR_PERNAS_EMPE_B
+    for t in fatiar(victor_empe_a):             # tiles 30-37
+        saida.append(encode_tile(t))
+    for t in fatiar(victor_empe_b):             # tiles 38-45
+        saida.append(encode_tile(t))
+    # a boca dele em pe, mesma ideia do sentado: so os dois tiles da
+    # cabeca onde a boca cai (linha 8-15) tem versao aberta
+    falando_empe = fatiar(VICTOR_CABECA_EMPE_FALANDO + VICTOR_TORSO_EMPE + VICTOR_PERNAS_EMPE_A)
+    saida.append(encode_tile(falando_empe[1]))  # tile 46: metade esquerda
+    saida.append(encode_tile(falando_empe[5]))  # tile 47: metade direita
+
+    while len(saida) < 48:                      # tres paginas de 256 bytes
         saida.append(BLANK)
     return b"".join(saida)
 
 if __name__ == "__main__":
     destino = sys.argv[1] if len(sys.argv) > 1 else "build/chr_sprites.bin"
     d = build()
-    assert len(d) == 512, len(d)
+    assert len(d) == 48 * 16, len(d)
     open(destino, "wb").write(d)
     print(f"sprites: {destino} ({len(d)} bytes) -- Amanda 0-15, "
-          f"Victor 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27, "
-          f"boca da Amanda aberta 28-29")
+          f"Victor sentado 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27, "
+          f"boca da Amanda aberta 28-29, Victor em pe 30-45, boca aberta 46-47")
