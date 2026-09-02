@@ -13,8 +13,18 @@ dupla funcao, escolhida por TILE, nao por personagem:
   paleta 0 (cabeca da Amanda): 1 = cabelo preto   2 = pele  3 = laco rosa
   paleta 1 (tronco e pernas
              da Amanda):       1 = vestido preto  2 = pele  3 = cabelo preto
-  paleta 2 (cabeca do Victor): 1 = cabelo e barba 2 = pele  3 = cinza da camisa
+  paleta 2 (cabeca do Victor,
+             tambem as pernas
+             dele em pe):      1 = cabelo/short   2 = pele  3 = azul dos crocs
   paleta 3 (torso do Victor):  1 = logo da Nike   2 = pele  3 = cinza da camisa
+
+O indice 3 da paleta 2 muda de sentido por TILE: na cabeca ele nao aparece
+(so cabelo e pele); nas pernas em pe, o mesmo indice vira o azul escuro dos
+crocs -- da pra fazer isso porque nenhuma das duas artes usa as duas coisas
+ao mesmo tempo. A pele (indice 2) tambem mudou de 0x36 pra 0x37: 0x36 e
+EXATAMENTE a cor do chao da pizzaria (ver o armadilha sobre isso no
+CLAUDE.md), entao uma canela exposta com 0x36 desapareceria contra o chao
+atras dela -- 0x37 e um tom de pele vizinho, mas distinguivel.
 
 As pernas da Amanda nao tem paleta propria: como o vestido cobre a perna
 inteira, todo pixel de pernas e indice 1 (preto) ou 3 (preto, a mecha de
@@ -158,13 +168,13 @@ VICTOR_FALANDO[11] = linha(('.',2), ('1',12), ('.',2))
 # de corpo inteiro, com dois quadros de passada, igual a Amanda.
 #
 # Cabeca e barba sao as MESMAS 14 linhas do Victor sentado (so ganham mais
-# duas, alongando o pescoco/colarinho ainda em pele -- sem chegar na
-# camisa ainda). Por isso o indice 3 (cinza da camisa) nao aparece nessas
-# 16 linhas: fica livre pro que as pernas precisam, sem gastar uma
-# paleta nova (ja estao as 4 ocupadas -- ver make_scene.py).
+# duas, alongando o pescoco -- mesma largura fina da linha 13 (8px), so que
+# por mais 2 linhas, em vez de alargar pro tamanho do ombro (isso que
+# parecia gola/blusa em vez de pescoco). A camisa (cinza, outra paleta)
+# so comeca mesmo no primeiro tile do torso.
 VICTOR_CABECA_EMPE = VICTOR[0:14] + [
-    linha(('.',3), ('2',10), ('.',3)),
-    linha(('.',2), ('2',12), ('.',2)),
+    linha(('.',4), ('2',8), ('.',4)),
+    linha(('.',4), ('2',8), ('.',4)),
 ]
 VICTOR_CABECA_EMPE_FALANDO = list(VICTOR_CABECA_EMPE)
 VICTOR_CABECA_EMPE_FALANDO[10] = linha(('.',2), ('1',12), ('.',2))
@@ -172,7 +182,11 @@ VICTOR_CABECA_EMPE_FALANDO[11] = linha(('.',2), ('1',12), ('.',2))
 
 # Torso: os mesmos ombros e o mesmo swoosh do sentado (linhas 16-20 do
 # Victor original), so trocando "maos na mesa" por bracos ao longo do
-# corpo -- nao ha mesa na frente dele agora.
+# corpo -- nao ha mesa na frente dele agora. A ultima linha era transparente
+# (deixava o chao atras aparecer) -- mas o chao ali e creme, quase a MESMA
+# cor da pele (mesma armadilha do CLAUDE.md), entao parecia uma tira de
+# pele entre a camisa e o short. Fechado com a barra da camisa (cinza),
+# encostando direto no short: sem vao nenhum.
 VICTOR_TORSO_EMPE = [
     linha(('2',1), ('3',14), ('2',1)),
     linha(('2',1), ('3',14), ('2',1)),
@@ -181,33 +195,31 @@ VICTOR_TORSO_EMPE = [
     linha(('2',1), ('3',14), ('2',1)),
     linha(('2',1), ('3',14), ('2',1)),
     linha(('.',1), ('2',2), ('3',10), ('2',2), ('.',1)),
-    linha(('.',16)),
+    linha(('.',2), ('3',12), ('.',2)),                             # barra da camisa
 ]
 
-# Short preto ate o sapato, sem pele exposta embaixo -- mesma solucao da
-# Amanda (ver AMANDA_PERNAS acima): o tom de pele do NES bate exatamente
-# com a cor do chao da pizzaria, entao a perna precisa ficar coberta o
-# tempo todo. O cinza da camisa (indice 3) reaparece so como detalhe do
-# tenis, ja que essa paleta e a mesma da cabeca.
+# Short preto (so em cima), canela a mostra, e um crocs azul escuro no pe --
+# a paleta das pernas em pe e a mesma da cabeca (paleta 2), mas o indice 3
+# (cinza da camisa) nao e usado ali, entao aqui ele vira o azul do crocs.
 VICTOR_PERNAS_EMPE_A = [
-    linha(('.',3), ('1',10), ('.',3)),
-    linha(('.',3), ('1',10), ('.',3)),
-    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
-    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
-    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
-    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),
-    linha(('.',3), ('3',4), ('.',2), ('3',4), ('.',3)),           # tenis
+    linha(('.',3), ('1',10), ('.',3)),                             # short, cintura
+    linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),            # short, barra -- ja separa as pernas
+    linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),            # canela
+    linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
+    linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
+    linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
+    linha(('.',3), ('3',4), ('.',2), ('3',4), ('.',3)),           # crocs
     linha(('.',16)),
 ]
 
 VICTOR_PERNAS_EMPE_B = [
-    linha(('.',3), ('1',10), ('.',3)),
-    linha(('.',3), ('1',10), ('.',3)),
-    linha(('.',3), ('1',3), ('.',4), ('1',3), ('.',3)),
-    linha(('.',3), ('1',3), ('.',4), ('1',3), ('.',3)),
-    linha(('.',2), ('1',3), ('.',6), ('1',3), ('.',2)),           # passada mais aberta
-    linha(('.',2), ('1',3), ('.',6), ('1',3), ('.',2)),
-    linha(('.',2), ('3',4), ('.',4), ('3',4), ('.',2)),
+    linha(('.',3), ('1',10), ('.',3)),                             # short, cintura
+    linha(('.',3), ('1',3), ('.',4), ('1',3), ('.',3)),            # short, barra
+    linha(('.',3), ('2',3), ('.',4), ('2',3), ('.',3)),            # canela
+    linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),           # passada mais aberta
+    linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),
+    linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),
+    linha(('.',2), ('3',4), ('.',4), ('3',4), ('.',2)),           # crocs
     linha(('.',16)),
 ]
 

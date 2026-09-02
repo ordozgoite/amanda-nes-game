@@ -28,8 +28,9 @@ PALETAS = [
 # libertou a paleta 3 pro torso do Victor.
 PALETA_SPRITE_CABECA = [0x0F, 0x0F, 0x36, 0x24]   # cabelo preto, laco rosa
 PALETA_SPRITE_TRONCO = [0x0F, 0x0F, 0x36, 0x0F]   # vestido preto
-PALETA_SPRITE_VICTOR = [0x0F, 0x0F, 0x36, 0x10]   # cabeca: cabelo preto, camisa cinza
-PALETA_SPRITE_VICTOR_TORSO = [0x0F, 0x3C, 0x36, 0x10]   # torso: o logo da Nike, ciano
+PALETA_SPRITE_VICTOR = [0x0F, 0x0F, 0x37, 0x02]   # cabeca: cabelo preto; pernas (em pe):
+                                                    # short preto, canela 0x37, crocs azul 0x02
+PALETA_SPRITE_VICTOR_TORSO = [0x0F, 0x3C, 0x37, 0x10]   # torso: o logo da Nike, ciano
 PALETA_SPRITE_PERNAS = [0x0F, 0x0F, 0x0F, 0x0F]   # vestido, sapatos, cabelo -- tudo preto
 
 px   = [[0] * W for _ in range(H)]        # indice de cor por pixel
