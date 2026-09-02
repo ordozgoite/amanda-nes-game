@@ -246,10 +246,10 @@ def main():
     # a etiqueta "VICTOR:" (fonte mini) fica na linha 9, uma acima da mensagem
     NOME_VICTOR = [255, 249, 247, 254, 252, 253, 245]
     NOME_AMANDA = [246, 250, 246, 251, 248, 246, 245]
-    nome = [d.bus.vram[0x2000 + 9*32 + 9 + i] for i in range(7)]
+    nome = [d.bus.vram[0x2000 + 9*32 + 5 + i] for i in range(7)]
     check("a etiqueta VICTOR: esta na tela", nome == NOME_VICTOR, f"tiles {nome}")
     # o texto foi mesmo escrito na tela: primeira linha comeca com N O S S A
-    letras = [d.bus.vram[0x2000 + 10*32 + 9 + i] for i in range(5)]
+    letras = [d.bus.vram[0x2000 + 10*32 + 5 + i] for i in range(5)]
     check("a primeira linha do balao esta na tela", letras == [217, 218, 222, 222, 204],
           f"tiles {letras}")
     check("essa e a caixa do Victor", d.bus.ram[sym["dlg_box"]] == 0)
@@ -267,7 +267,9 @@ def main():
     # forma generica, conferindo so que cada parte abre na caixa (posicao +
     # etiqueta) de quem realmente fala nela, sem transcrever cada frase.
     nome_por_falante = {0: NOME_VICTOR, 1: NOME_AMANDA}
-    linha_nome = {0: 9, 1: 17}       # 0 = Victor (caixa de cima), 1 = Amanda
+    linha_nome = {0: 9, 1: 9}         # as duas caixas ficam na mesma linha agora
+    col_nome = {0: 5, 1: 13}          # mas a coluna diferencia: Victor mais a
+                                       # esquerda, Amanda mais a direita
     a_boca_mexeu = {0: False, 1: False}
     for parte in range(1, len(FALANTE_TAB)):
         for _ in range(400):
@@ -283,11 +285,12 @@ def main():
               d.bus.ram[sym["dlg_box"]] == falante,
               f"esperado {falante}, leu {d.bus.ram[sym['dlg_box']]}")
         linha = linha_nome[falante]
-        nome_lido = [d.bus.vram[0x2000 + linha*32 + 9 + i] for i in range(7)]
+        col = col_nome[falante]
+        nome_lido = [d.bus.vram[0x2000 + linha*32 + col + i] for i in range(7)]
         check(f"parte {parte}: etiqueta do falante certo",
               nome_lido == nome_por_falante[falante], f"tiles {nome_lido}")
         if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
-            coracao = d.bus.vram[0x2000 + (linha + 1)*32 + 9 + 6]
+            coracao = d.bus.vram[0x2000 + (linha + 1)*32 + col + 6]
             check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
         if parte == 3:   # a primeira parte depois do convite pra ELE sentar
             check("a animacao de sentar do Victor terminou: ele esta sentado",

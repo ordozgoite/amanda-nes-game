@@ -83,21 +83,23 @@ TILE_VICTOR_EMPE = 30    ; ver tools/make_sprites.py -- "Victor em pe 30-45"
 TILE_BOCA_EMPE_E = 46
 TILE_BOCA_EMPE_D = 47
 
-; O balao de fala fica sempre nas colunas 8-23 (16 tiles), mas muda de
-; LINHA conforme quem esta falando: caixa 0 (Victor) comeca na linha 8,
-; caixa 1 (Amanda) comeca na 16 -- mais perto de onde ela fica parada.
-; Os limites nao sao arbitrarios: toda linha de topo e multipla de 8
-; tiles, entao os blocos de atributo (32x32px cada) caem inteiros dentro
-; da caixa nos dois casos, e a paleta dela nao vaza pro cenario em volta.
+; O balao de fala fica sempre na mesma LINHA pros dois (CAIXA_ROW; ver
+; boxrow_tab), acima de onde os dois personagens ficam o tempo todo,
+; andando ou sentados. A COLUNA e o que diferencia quem fala: a caixa do
+; Victor cai um pouco mais pra esquerda, a da Amanda mais pra direita --
+; alem do nome dentro da caixa, a posicao tambem ajuda a saber quem fala
+; num relance. O deslocamento e de exatamente 1 bloco de atributo (4
+; tiles = 32px): assim os blocos de 32x32 da nametable (ver atrib1_tab
+; mais abaixo) continuam caindo inteiros dentro da caixa nos dois casos,
+; sem vazar paleta pro cenario em volta.
 ;
 ; Como cada caixa ocupa exatamente 8 linhas de tiles (=1 pagina inteira
-; de 256 bytes da nametable), o byte BAIXO de todo endereco dentro dela
-; e igual nas duas -- so o byte ALTO muda (ver caixa_pag_tab). E por isso
-; CAIXA_BAIXO/TEXTO_BAIXO continuam sendo uma constante so.
-CAIXA_COL   = 8     ; colunas 8-23
-CAIXA_BAIXO = $08   ; $..08 = coluna 8, linha 0 dentro da pagina da caixa
-NOME_BAIXO  = $29   ; $..29 = coluna 9, linha 1: o nome de quem fala
-TEXTO_BAIXO = $49   ; $..49 = coluna 9, linha 2: a mensagem, uma linha abaixo
+; de 256 bytes da nametable), o byte ALTO do endereco e o mesmo pros dois
+; falantes (ver caixa_pag_tab) -- so o BAIXO muda com a coluna (ver
+; caixa_baixo_tab/nome_baixo_tab/texto_baixo_tab).
+CAIXA_ROW        = 8    ; linha 8, em tiles -- a mesma pros dois
+CAIXA_COL_VICTOR = 4    ; colunas 4-19
+CAIXA_COL_AMANDA = 12   ; colunas 12-27
 ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 
 ; ---- minigame: pizzas caindo ----
@@ -1405,7 +1407,7 @@ desenha_linha:
     asl
     asl                     ; linha * 32
     clc
-    adc #CAIXA_BAIXO
+    adc caixa_baixo_tab, x
     sta PPUADDR
 
     ldx dlg_tipo
@@ -1452,17 +1454,17 @@ escreve_letra:
     ldx dlg_box
     lda caixa_pag_tab, x
     sta PPUADDR
-    ldx dlg_parte
+    ldy dlg_parte            ; Y aqui, pra nao perder dlg_box em X
     lda dlg_txt
     sec
-    sbc inicio_fala_tab, x   ; linha DENTRO da parte atual, nao global
+    sbc inicio_fala_tab, y   ; linha DENTRO da parte atual, nao global
     asl
     asl
     asl
     asl
     asl                     ; linha do texto * 32
     clc
-    adc #TEXTO_BAIXO
+    adc texto_baixo_tab, x
     adc dlg_col
     sta PPUADDR
     lda dlg_tipo
@@ -1500,7 +1502,7 @@ desenha_nome:
     bit PPUSTATUS
     lda caixa_pag_tab, x
     sta PPUADDR
-    lda #NOME_BAIXO
+    lda nome_baixo_tab, x
     sta PPUADDR
 
     ldy #$00
@@ -1525,10 +1527,10 @@ restaura_linha:
     asl
     asl
     clc
-    adc #CAIXA_BAIXO
+    adc caixa_baixo_tab, x
     sta PPUADDR
 
-    ; ptr = nam_cena + (linha_do_topo_da_caixa + dlg_lin) * 32 + CAIXA_COL
+    ; ptr = nam_cena + (linha_do_topo_da_caixa + dlg_lin) * 32 + coluna_da_caixa
     lda boxrow_tab, x
     clc
     adc dlg_lin
@@ -1547,10 +1549,10 @@ restaura_linha:
     rol tmp+1
     lda tmp
     clc
-    adc #<(nam_cena + CAIXA_COL)
+    adc caixacol_lo_tab, x
     sta ptr
     lda tmp+1
-    adc #>(nam_cena + CAIXA_COL)
+    adc caixacol_hi_tab, x
     sta ptr+1
 
     ldy #$00
@@ -2334,16 +2336,27 @@ borda_meio:  .byte TILE_BORDA+1, TILE_BRANCO,  TILE_BORDA+6
 borda_dir:   .byte TILE_BORDA+2, TILE_BORDA+4, TILE_BORDA+7
 
 ; ---- as duas caixas de fala (por QUEM fala): [0] = Victor, [1] = Amanda ----
-; boxrow_tab e a unica coisa que realmente muda a posicao na tela; as
-; outras tabelas sao so a mesma conta (ver comentario em CAIXA_COL) feita
-; pra cada linha de topo. inicio_fala_tab/fim_fala_tab/falante_tab (por
-; PARTE do dialogo, nao por caixa) vem geradas em dialogo.inc.
-boxrow_tab:      .byte 8, 16          ; linha do topo, em tiles
-caixa_pag_tab:   .byte $21, $22       ; byte alto do endereco da caixa
-atrib1_tab:      .byte $D2, $E2       ; endereco dos 4 bytes de atributo de cima
-atrib2_tab:      .byte $DA, $EA       ; e os 4 de baixo
-restoff1_tab:    .byte 18, 34         ; onde ler esses bytes de volta em nam_cena+960
-restoff2_tab:    .byte 26, 42
+; mesma LINHA pros dois (CAIXA_ROW), acima dos sprites -- so a COLUNA
+; diferencia (CAIXA_COL_VICTOR/CAIXA_COL_AMANDA, ver comentario mais
+; acima). Cada tabela e so essa mesma conta (endereco = pagina + linha*32
+; + coluna, ou o bloco de atributo correspondente) feita pra cada coluna.
+; inicio_fala_tab/fim_fala_tab/falante_tab (por PARTE do dialogo, nao por
+; caixa) vem geradas em dialogo.inc.
+boxrow_tab:      .byte CAIXA_ROW, CAIXA_ROW
+caixa_pag_tab:   .byte $21, $21                          ; byte alto -- so a LINHA muda
+                                                           ; a pagina, e ela e igual pros dois
+caixa_baixo_tab: .byte CAIXA_COL_VICTOR, CAIXA_COL_AMANDA          ; linha 0 da caixa
+nome_baixo_tab:  .byte 32+CAIXA_COL_VICTOR+1, 32+CAIXA_COL_AMANDA+1 ; linha 1 (nome)
+texto_baixo_tab: .byte 64+CAIXA_COL_VICTOR+1, 64+CAIXA_COL_AMANDA+1 ; linha 2 (texto)
+caixacol_lo_tab: .byte <(nam_cena+CAIXA_COL_VICTOR), <(nam_cena+CAIXA_COL_AMANDA)
+caixacol_hi_tab: .byte >(nam_cena+CAIXA_COL_VICTOR), >(nam_cena+CAIXA_COL_AMANDA)
+; endereco de atributo = $23C0 + (linha//4)*8 + (coluna//4) -- CAIXA_ROW=8
+; cai certinho no limite de um bloco (linha//4 = 2 no topo da caixa, 3 na
+; base, 4 linhas depois)
+atrib1_tab:      .byte $C0+(CAIXA_ROW/4)*8+CAIXA_COL_VICTOR/4, $C0+(CAIXA_ROW/4)*8+CAIXA_COL_AMANDA/4
+atrib2_tab:      .byte $C0+(CAIXA_ROW/4+1)*8+CAIXA_COL_VICTOR/4, $C0+(CAIXA_ROW/4+1)*8+CAIXA_COL_AMANDA/4
+restoff1_tab:    .byte (CAIXA_ROW/4)*8+CAIXA_COL_VICTOR/4, (CAIXA_ROW/4)*8+CAIXA_COL_AMANDA/4
+restoff2_tab:    .byte (CAIXA_ROW/4+1)*8+CAIXA_COL_VICTOR/4, (CAIXA_ROW/4+1)*8+CAIXA_COL_AMANDA/4
 
 txt_victor:  .byte "VICTOR", $00
 txt_amanda:  .byte "AMANDA", $00
