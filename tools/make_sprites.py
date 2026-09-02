@@ -15,16 +15,23 @@ dupla funcao, escolhida por TILE, nao por personagem:
              da Amanda):       1 = vestido preto  2 = pele  3 = cabelo preto
   paleta 2 (cabeca do Victor,
              tambem as pernas
-             dele em pe):      1 = cabelo/short   2 = pele  3 = azul dos crocs
+             dele em pe):      1 = cabelo/short   2 = pele  3 = cinza (colarinho/tenis)
   paleta 3 (torso do Victor):  1 = logo da Nike   2 = pele  3 = cinza da camisa
 
-O indice 3 da paleta 2 muda de sentido por TILE: na cabeca ele nao aparece
-(so cabelo e pele); nas pernas em pe, o mesmo indice vira o azul escuro dos
-crocs -- da pra fazer isso porque nenhuma das duas artes usa as duas coisas
-ao mesmo tempo. A pele (indice 2) tambem mudou de 0x36 pra 0x37: 0x36 e
-EXATAMENTE a cor do chao da pizzaria (ver o armadilha sobre isso no
-CLAUDE.md), entao uma canela exposta com 0x36 desapareceria contra o chao
-atras dela -- 0x37 e um tom de pele vizinho, mas distinguivel.
+O indice 3 da paleta 2 e cinza nas duas artes que a usam: o colarinho da
+camisa (cabeca, sentado ou em pe -- fecha o pescoco antes da camisa de
+verdade comecar, ver VICTOR e VICTOR_CABECA_EMPE) e o detalhe do tenis
+(pernas em pe, ver VICTOR_PERNAS_EMPE_A). Ja tentamos um azul so pro tenis
+ali, mas so sobra UMA cor extra em cada paleta -- ou o colarinho fica cinza
+(como a camisa) ou o tenis fica azul, nao os dois ao mesmo tempo.
+
+A pele (indice 2) e 0x37, um bege claro -- NAO a mesma cor 0x36 da Amanda.
+0x36 e EXATAMENTE a cor do chao da pizzaria (ver a armadilha sobre isso no
+CLAUDE.md); pra ela isso nunca foi problema porque o vestido cobre a perna
+inteira, mas pro Victor em pe, com a canela exposta, usar 0x36 faz a perna
+sumir contra o chao atras. Testamos 4 tons lado a lado (0x35 rosa, 0x36
+igual a Amanda, 0x37 bege, 0x30 branco puro) -- 0x37 foi o escolhido: o
+mais proximo da Amanda que ainda fica visivel.
 
 As pernas da Amanda nao tem paleta propria: como o vestido cobre a perna
 inteira, todo pixel de pernas e indice 1 (preto) ou 3 (preto, a mecha de
@@ -135,11 +142,10 @@ VICTOR = [
     linha(('.',2), ('1',1), ('2',2), ('1',1), ('2',4),
           ('1',1), ('2',2), ('1',1), ('.',2)),                     # olhos
     linha(('.',2), ('1',1), ('2',10), ('1',1), ('.',2)),           # nariz
-    linha(('.',2), ('1',1), ('2',10), ('1',1), ('.',2)),           # barba fina nas laterais
-    linha(('.',2), ('1',1), ('2',10), ('1',1), ('.',2)),
-    linha(('.',2), ('1',2), ('2',3), ('1',2), ('2',3),
-          ('1',2), ('.',2)),                                       # bigode e boca
-    linha(('.',2), ('1',3), ('2',6), ('1',3), ('.',2)),            # queixo aparecendo
+    linha(('.',2), ('1',2), ('2',8), ('1',2), ('.',2)),            # barba: bochecha comecando
+    linha(('.',2), ('1',3), ('2',6), ('1',3), ('.',2)),            # barba: bochecha mais cheia
+    linha(('.',2), ('1',5), ('2',2), ('1',5), ('.',2)),            # bigode, so a boca (fina) sobra
+    linha(('.',3), ('1',4), ('2',2), ('1',4), ('.',3)),            # queixo, so uma tira aparece
     linha(('.',2), ('1',12), ('.',2)),                             # ponta da barba
     linha(('.',4), ('2',8), ('.',4)),                              # pescoco
     linha(('.',1), ('3',14), ('.',1)),                             # ombros
@@ -198,9 +204,10 @@ VICTOR_TORSO_EMPE = [
     linha(('.',2), ('3',12), ('.',2)),                             # barra da camisa
 ]
 
-# Short preto (so em cima), canela a mostra, e um crocs azul escuro no pe --
-# a paleta das pernas em pe e a mesma da cabeca (paleta 2), mas o indice 3
-# (cinza da camisa) nao e usado ali, entao aqui ele vira o azul do crocs.
+# Short preto (so em cima), canela a mostra, e o tenis cinza (indice 3 da
+# paleta 2 -- o mesmo cinza do colarinho, ver o docstring do topo do
+# arquivo sobre por que os dois dividem essa cor em vez de cada um ter a
+# sua).
 VICTOR_PERNAS_EMPE_A = [
     linha(('.',3), ('1',10), ('.',3)),                             # short, cintura
     linha(('.',4), ('1',3), ('.',2), ('1',3), ('.',4)),            # short, barra -- ja separa as pernas
@@ -208,7 +215,7 @@ VICTOR_PERNAS_EMPE_A = [
     linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
     linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
     linha(('.',4), ('2',3), ('.',2), ('2',3), ('.',4)),
-    linha(('.',3), ('3',4), ('.',2), ('3',4), ('.',3)),           # crocs
+    linha(('.',3), ('3',4), ('.',2), ('3',4), ('.',3)),           # tenis
     linha(('.',16)),
 ]
 
@@ -219,7 +226,7 @@ VICTOR_PERNAS_EMPE_B = [
     linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),           # passada mais aberta
     linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),
     linha(('.',2), ('2',3), ('.',6), ('2',3), ('.',2)),
-    linha(('.',2), ('3',4), ('.',4), ('3',4), ('.',2)),           # crocs
+    linha(('.',2), ('3',4), ('.',4), ('3',4), ('.',2)),           # tenis
     linha(('.',16)),
 ]
 
