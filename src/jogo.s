@@ -106,18 +106,28 @@ ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 ; A faixa de captura e generosa de proposito (24px, quase a altura toda do
 ; sprite da Amanda) -- e um presente, nao um jogo de reflexo apertado.
 TILE_PIZZA      = 26     ; ver tools/make_sprites.py
-PONTOS_MIN      = 15     ; pontuacao que dispara a comemoracao
-ERROS_MAX       = 5      ; erros que encerram a rodada
+; PONTOS_MIN e ERROS_MAX vem de build/jogo.inc (tools/make_jogo.py) -- o
+; texto da intro/vitoria precisa do mesmo numero ("PEGUE 15 PIZZAS!"), entao
+; o Python e quem manda nisso agora, nao o assembly.
 ESPERA_BASE     = 90     ; quadros entre pizzas, no comeco
 ESPERA_MIN      = 30     ; nunca mais rapido que isso
 SALTO_MAX       = 80     ; o x de uma pizza fica a no maximo isso do x da anterior
 VEL_BASE        = 1      ; pixels por quadro, no comeco
 VEL_MAX         = 3
-DURACAO_COMEMORA = 90    ; quadros que a comemoracao fica na tela
+DURACAO_COMEMORA = 90    ; quadros que a tela de vitoria fica parada
 CAPTURA_Y_MIN   = CHAO_Y - 4
 CAPTURA_Y_MAX   = CHAO_Y + 24
-PLACAR_PONTOS   = $2000 + 26        ; linha 0, coluna 26-27: dois digitos
-PLACAR_ERROS    = $2000 + 32 + 26   ; linha 1, coluna 26: um digito
+; HUD: barra de pontos (PONTOS_MIN segmentos, linha 2) e vidas (ERROS_MAX
+; iconezinhos, linha 3) -- ver desenha_barra/desenha_vidas. Comecam na
+; coluna 8, depois do rotulo "PONTOS"/"VIDAS" (ver make_jogo.py).
+BARRA_ADDR      = $2000 + 2*32 + 8
+VIDAS_ADDR      = $2000 + 3*32 + 8
+; UI_BASE vem de build/jogo.inc (tools/make_jogo.py) -- indice do primeiro
+; dos 4 tiles de HUD, na ordem em que o Python escreveu (ver ui_ordem).
+UI_BARRA_VAZIA  = UI_BASE + 0
+UI_BARRA_CHEIA  = UI_BASE + 1
+UI_VIDA_CHEIA   = UI_BASE + 2
+UI_VIDA_VAZIA   = UI_BASE + 3
 
 ; --------------------------------------------------------------------------
 .segment "HEADER"
@@ -186,13 +196,18 @@ victor_sentado:.res 1       ; 0 = desenha em pe (andando), 1 = desenha sentado
 ; --- minigame: pizzas caindo ---
 ; 'jogo_tmp' e o scratch do laco principal (nao pode usar 'ptr'/'tmp':
 ; sao da musica, que roda no NMI a qualquer momento).
-jogo_fase:   .res 1         ; 0 jogando, 1 comemorando, 2 fim de jogo
+jogo_fase:   .res 1         ; 0 jogando, 1 vitoria, 2 derrota, 3 aguardando o 1o B
 jogo_pontos: .res 1
 jogo_erros:  .res 1
 jogo_vel:    .res 1
 jogo_espera: .res 1
 jogo_temp:   .res 1
 jogo_venceu: .res 1         ; 1 = ja disparou a comemoracao nesta rodada
+; checa_vitoria/checa_derrota rodam de dentro do laco de pizzas
+; (atualiza_pizzas) -- trocar de nametable ali no meio clobber ia o X do
+; laco. Em vez disso so avisam com essa flag; quem troca de verdade e
+; atualiza_jogo, no topo do laco principal, onde e seguro.
+jogo_troca:  .res 1
 jogo_tmp:    .res 1
 jogo_tmp2:   .res 1
 placar_sujo: .res 1
@@ -228,9 +243,12 @@ chr_sprites: .incbin "chr_sprites.bin"   ; Amanda e Victor (2 paginas)
 nam_cena:   .incbin "cena.nam"           ; tela + atributos (4 paginas)
 
 .segment "BANK2"
-chr_jogo:         .incbin "chr_jogo.bin"      ; ceu, chao e digitos do placar
+chr_jogo:         .incbin "chr_jogo.bin"      ; ceu, chao, retrato triste, HUD
 chr_sprites_jogo:  .incbin "chr_sprites.bin"   ; a mesma folha de sprites da cena
-nam_jogo:         .incbin "jogo.nam"          ; tela + atributos (4 paginas)
+nam_jogo:         .incbin "jogo.nam"          ; tela jogando (4 paginas)
+nam_jogo_intro:   .incbin "jogo_intro.nam"    ; "PEGUE N PIZZAS!" -- antes de comecar
+nam_jogo_vitoria: .incbin "jogo_vitoria.nam"  ; "PARABENS!" -- ao alcancar PONTOS_MIN
+nam_jogo_derrota: .incbin "jogo_derrota.nam"  ; retrato triste -- ao alcancar ERROS_MAX
 
 ; ==========================================================================
 .segment "CODE"
@@ -1088,10 +1106,10 @@ carrega_jogo:
     sta paginas
     jsr copia_ppu
 
-    PPU_ADDR $2000           ; a tela pronta, tiles e atributos
-    lda #<nam_jogo
+    PPU_ADDR $2000           ; a tela pronta, tiles e atributos -- comeca na
+    lda #<nam_jogo_intro     ; intro ("PEGUE N PIZZAS!"), nao direto jogando
     sta ptr
-    lda #>nam_jogo
+    lda #>nam_jogo_intro
     sta ptr+1
     lda #4
     sta paginas
@@ -1113,28 +1131,41 @@ carrega_jogo:
     sta player_dir
     sta player_frame
     sta player_anim
-    sta jogo_fase
     sta jogo_pontos
     sta jogo_erros
     sta jogo_venceu
     sta pz_ativa
     sta pz_ativa+1
     sta pz_ativa+2
+    lda #$03                 ; aguardando o primeiro B -- ver atualiza_jogo
+    sta jogo_fase
     lda #120                 ; meio da tela: a primeira pizza pode ir pros dois lados
     sta ultimo_pz_x
     lda #ESPERA_BASE
     sta jogo_espera
     lda #VEL_BASE
-    sta jogo_vel
-    lda #$01
-    sta placar_sujo
-
+    sta jogo_vel             ; placar_sujo fica pra quando mostra_jogando
+                              ; trocar da intro pra tela de jogo de verdade
     jsr atualiza_oam_jogo
 
     lda #TELA_JOGO
     sta tela
     lda #$00
     sta carregando
+    jmp liga_tela
+
+; --------------------------------------------------------------------------
+;  Troca so a nametable da tela do jogo -- ptr/ptr+1 ja apontando pra ela
+;  (CHR e paleta ja estao carregadas, nao precisam mexer de novo). Usada
+;  nas quatro transicoes de estado do minigame (intro/jogando/vitoria/
+;  derrota, ver checa_vitoria/checa_derrota/atualiza_jogo).
+; --------------------------------------------------------------------------
+troca_nametable_jogo:
+    jsr desliga_tela
+    PPU_ADDR $2000
+    lda #4
+    sta paginas
+    jsr copia_ppu
     jmp liga_tela
 
 ; ==========================================================================
@@ -1652,35 +1683,109 @@ restaura_atributos:
 ; ==========================================================================
 ;  Tela: o minigame -- pizzas caem, a Amanda anda embaixo pra pegar.
 ;
-;  E um arcade: depois de alcancar PONTOS_MIN ela ve uma comemoracao (o
-;  "final" -- por enquanto um placeholder, o conteudo de verdade ainda nao
-;  foi decidido), mas o jogo continua dali, tipo o foguete do Tetris. So
-;  acaba quando ela erra ERROS_MAX pizzas.
+;  E um arcade: depois de alcancar PONTOS_MIN ela ve uma tela de vitoria,
+;  mas o jogo continua dali, tipo o foguete do Tetris (jogo_venceu trava
+;  a comemoracao pra nao repetir). Se erra ERROS_MAX pizzas, ve uma tela
+;  de derrota e pode tentar de novo na hora (B), sem sair pro menu -- ou
+;  desistir com START. Antes da primeira pizza cair, uma tela de intro
+;  explica o objetivo (fase 3), senao quem joga pela primeira vez nao
+;  entende que e um minigame.
 ; ==========================================================================
 atualiza_jogo:
+    lda jogo_troca            ; checa_vitoria/checa_derrota so avisam --
+    beq @sem_troca             ; trocar de nametable e feito aqui, no topo
+    lda #$00                   ; do laco principal, nunca de dentro do laco
+    sta jogo_troca              ; de pizzas (ver o comentario em jogo_troca)
+    jsr troca_tela_do_estado
+@sem_troca:
+
     lda jogo_fase
-    cmp #$02                 ; fim de jogo: so espera o START
-    bne @nao_fim
+    cmp #$03                 ; aguardando o primeiro B: intro na tela
+    bne @nao_intro
+    lda botoes_novos
+    and #BTN_B
+    beq @so_desenha
+    jsr mostra_jogando
+    jmp @so_desenha
+@nao_intro:
+
+    cmp #$02                 ; derrota: B tenta de novo, START desiste
+    bne @nao_derrota
     lda botoes_novos
     and #BTN_START
-    beq @so_desenha
+    beq @checa_b_derrota
     jmp carrega_menu
-@so_desenha:
-    jmp atualiza_oam_jogo
+@checa_b_derrota:
+    lda botoes_novos
+    and #BTN_B
+    beq @so_desenha
+    jsr reinicia_jogo
+    jmp @so_desenha
+@nao_derrota:
 
-@nao_fim:
-    cmp #$01                 ; comemorando: pizzas pausadas, so conta o tempo
+    cmp #$01                 ; vitoria: pizzas pausadas, so conta o tempo
     bne @jogando
     dec jogo_temp
     bne @so_desenha
-    lda #$00
-    sta jogo_fase
-    jmp atualiza_oam_jogo
+    jsr mostra_jogando
+    jmp @so_desenha
 
 @jogando:
     jsr move_jogador
     jsr atualiza_pizzas
+@so_desenha:
     jmp atualiza_oam_jogo
+
+; ---- escolhe a nametable certa pro jogo_fase atual (so vitoria/derrota
+; -- a intro e carregada direto por carrega_jogo, fora do laco de pizzas,
+; entao nao precisa passar por aqui) ----
+troca_tela_do_estado:
+    lda jogo_fase
+    cmp #$01
+    bne @derrota
+    lda #<nam_jogo_vitoria
+    sta ptr
+    lda #>nam_jogo_vitoria
+    sta ptr+1
+    jmp troca_nametable_jogo
+@derrota:
+    lda #<nam_jogo_derrota
+    sta ptr
+    lda #>nam_jogo_derrota
+    sta ptr+1
+    jmp troca_nametable_jogo
+
+; ---- volta (ou comeca) a jogar: nametable "jogando", fase 0. Usada pra
+; sair da intro e pra voltar da tela de vitoria. ----
+mostra_jogando:
+    lda #<nam_jogo
+    sta ptr
+    lda #>nam_jogo
+    sta ptr+1
+    jsr troca_nametable_jogo
+    lda #$00
+    sta jogo_fase
+    lda #$01
+    sta placar_sujo
+    rts
+
+; ---- ela perdeu e apertou B: reseta os numeros e comeca de novo, sem
+; sair da tela (ver checa_derrota) ----
+reinicia_jogo:
+    lda #$00
+    sta jogo_pontos
+    sta jogo_erros
+    sta jogo_venceu
+    sta pz_ativa
+    sta pz_ativa+1
+    sta pz_ativa+2
+    lda #120
+    sta ultimo_pz_x
+    lda #ESPERA_BASE
+    sta jogo_espera
+    lda #VEL_BASE
+    sta jogo_vel
+    jmp mostra_jogando
 
 ; --------------------------------------------------------------------------
 ;  Move as pizzas ativas, spawna novas e detecta captura ou erro.
@@ -1861,8 +1966,13 @@ checa_vitoria:
     lda #$01
     sta jogo_venceu
     sta jogo_fase
-    lda #DURACAO_COMEMORA
-    sta jogo_temp
+    sta jogo_troca             ; atualiza_jogo troca a tela no topo do
+    lda #DURACAO_COMEMORA      ; laco principal (nao daqui -- checa_vitoria
+    sta jogo_temp               ; roda dentro do laco de pizzas)
+    lda #$00                   ; esconde qualquer pizza que ainda estivesse
+    sta pz_ativa                ; caindo -- senao ela fica flutuando parada
+    sta pz_ativa+1               ; por cima da tela de vitoria/derrota
+    sta pz_ativa+2
 @fim:
     rts
 
@@ -1872,6 +1982,12 @@ checa_derrota:
     bcc @fim
     lda #$02
     sta jogo_fase
+    lda #$01
+    sta jogo_troca
+    lda #$00                   ; esconde qualquer pizza que ainda estivesse
+    sta pz_ativa                ; caindo (mesmo motivo do checa_vitoria)
+    sta pz_ativa+1
+    sta pz_ativa+2
 @fim:
     rts
 
@@ -1943,58 +2059,65 @@ atualiza_oam_jogo:
     rts
 
 ; --------------------------------------------------------------------------
-;  Placar: dois digitos de pontos e um de erros, escritos no fundo. So
-;  redesenha quando 'placar_sujo' pede -- roda no NMI, pode usar ptr/tmp
-;  (a musica toca depois, na mesma chamada, nunca ao mesmo tempo).
+;  HUD: a barra de pontos (PONTOS_MIN segmentos) e as vidas (ERROS_MAX
+;  iconezinhos), escritas no fundo. So redesenha quando 'placar_sujo'
+;  pede -- roda no NMI, pode usar ptr/tmp (a musica toca depois, na mesma
+;  chamada, nunca ao mesmo tempo). BARRA_ADDR/VIDAS_ADDR nunca cruzam uma
+;  pagina de 256 bytes (15 e 5 tiles, respectivamente), entao da pra somar
+;  o indice direto no byte baixo sem se preocupar com o carry.
 ; --------------------------------------------------------------------------
-desenha_placar:
-    lda placar_sujo
+desenha_hud:
+    lda jogo_fase             ; so faz sentido jogando -- nas telas de
+    bne @fim                   ; intro/vitoria/derrota, BARRA_ADDR/VIDAS_ADDR
+    lda placar_sujo             ; caem em cima do desenho delas, nao do HUD
     beq @fim
     lda #$00
     sta placar_sujo
 
-    jsr converte_pontos       ; X = dezena, A = unidade
+    ldx #$00
+@loop_barra:
+    txa
+    cmp jogo_pontos
+    lda #UI_BARRA_VAZIA
+    bcs @poe_barra           ; X >= jogo_pontos: esse segmento ainda nao foi
+    lda #UI_BARRA_CHEIA
+@poe_barra:
     pha
+    bit PPUSTATUS
+    lda #>BARRA_ADDR
+    sta PPUADDR
     txa
     clc
-    adc #DIG_BASE
-    tay
-    bit PPUSTATUS
-    PPU_ADDR PLACAR_PONTOS
-    tya
-    sta PPUDATA
+    adc #<BARRA_ADDR
+    sta PPUADDR
     pla
-    clc
-    adc #DIG_BASE
     sta PPUDATA
-
-    lda jogo_erros
-    cmp #10
-    bcc @erros_ok
-    lda #9                    ; satura em 9 (nao deveria acontecer)
-@erros_ok:
-    clc
-    adc #DIG_BASE
-    tay                        ; PPU_ADDR usa A -- guarda o tile em Y antes
-    bit PPUSTATUS
-    PPU_ADDR PLACAR_ERROS
-    tya
-    sta PPUDATA
-@fim:
-    rts
-
-; ---- jogo_pontos (0-255) -> dezena (X) e unidade (A), saturado em 99 ----
-converte_pontos:
-    ldx #$00
-    lda jogo_pontos
-@div10:
-    cmp #10
-    bcc @pronto
-    sbc #10
     inx
-    cpx #10
-    bne @div10
-@pronto:
+    cpx #PONTOS_MIN
+    bne @loop_barra
+
+    ldx #$00
+@loop_vidas:
+    txa
+    cmp jogo_erros
+    lda #UI_VIDA_VAZIA
+    bcc @poe_vida             ; X < jogo_erros: essa vida ja foi perdida
+    lda #UI_VIDA_CHEIA
+@poe_vida:
+    pha
+    bit PPUSTATUS
+    lda #>VIDAS_ADDR
+    sta PPUADDR
+    txa
+    clc
+    adc #<VIDAS_ADDR
+    sta PPUADDR
+    pla
+    sta PPUDATA
+    inx
+    cpx #ERROS_MAX
+    bne @loop_vidas
+@fim:
     rts
 
 ; ==========================================================================
@@ -2074,7 +2197,7 @@ nmi:
     beq @menu
     cmp #TELA_CENA
     beq @cena
-    jsr desenha_placar
+    jsr desenha_hud
     jmp @scroll
 @menu:
     jsr pulsa_coracao
