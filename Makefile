@@ -45,6 +45,7 @@ audio: $(JOGO)
 	python3 tools/audio_menu.py
 	python3 tools/audio_dialogo.py
 	python3 tools/audio_minigame.py
+	python3 tools/audio_derrota.py
 
 rodar: $(JOGO)
 	fceux --sound 1 --volume 150 --xscale 3 --yscale 3 $(JOGO)

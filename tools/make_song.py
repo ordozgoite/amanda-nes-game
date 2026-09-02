@@ -135,6 +135,16 @@ MUSICAS = [
 # pra isso.
 PLIN = "A5"
 
+# --------------------------------------------------- efeito: a derrota
+# Uma fraseszinha triste e curta -- 4 notas, uma vez so -- quando ela erra
+# ERROS_MAX pizzas (ver checa_derrota em jogo.s). Mesma tecnica do "plin":
+# cada nota e um decaimento automatico do APU, disparado com um atraso
+# entre uma e outra (o motor de 3 canais pausa nesse instante, ver
+# musica_para, entao os dois pulsos ficam livres). Descendo B3-G3-E3-D3,
+# em Mi menor -- a mesma tonalidade do refrao de "Amanda" (canal2_jogo
+# comeca e termina em sol/re), pra nao soar destoante do resto do jogo.
+TRISTE = ["B3", "G3", "E3", "D3"]
+
 # confere que os tres canais de cada musica tem a mesma duracao: cada um
 # roda o proprio laco, entao qualquer diferenca faria eles se
 # desencontrarem aos poucos
@@ -154,7 +164,10 @@ def tabela(nome, valores, alto):
 
 def main():
     saida = ["; gerado por tools/make_song.py -- nao edite a mao", "",
-             f"PLIN_NOTA = {indice(PLIN)}    ; nota do efeito do START no menu ({PLIN})", ""]
+             f"PLIN_NOTA = {indice(PLIN)}    ; nota do efeito do START no menu ({PLIN})"]
+    for i, nome in enumerate(TRISTE):
+        saida.append(f"TRISTE_NOTA{i+1} = {indice(nome)}    ; nota {i+1} da derrota ({nome})")
+    saida.append("")
 
     per = [0] * (N_NOTAS + 1)
     tri = [0] * (N_NOTAS + 1)

@@ -115,6 +115,13 @@ SALTO_MAX       = 80     ; o x de uma pizza fica a no maximo isso do x da anteri
 VEL_BASE        = 1      ; pixels por quadro, no comeco
 VEL_MAX         = 3
 DURACAO_COMEMORA = 90    ; quadros que a tela de vitoria fica parada
+; a fraseszinha triste da derrota: nota 1 toca na hora (checa_derrota),
+; as outras tres a cada DERROTA_PASSO quadros -- ver derrota_espera
+DERROTA_ESPERA_INICIAL = 75
+DERROTA_PASSO          = 25
+DERROTA_NOTA2 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO
+DERROTA_NOTA3 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO*2
+DERROTA_NOTA4 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO*3
 CAPTURA_Y_MIN   = CHAO_Y - 4
 CAPTURA_Y_MAX   = CHAO_Y + 24
 ; HUD: barra de pontos (PONTOS_MIN segmentos, linha 2) e vidas (ERROS_MAX
@@ -208,6 +215,11 @@ jogo_venceu: .res 1         ; 1 = ja disparou a comemoracao nesta rodada
 ; laco. Em vez disso so avisam com essa flag; quem troca de verdade e
 ; atualiza_jogo, no topo do laco principal, onde e seguro.
 jogo_troca:  .res 1
+; a fraseszinha triste da derrota (ver checa_derrota/toca_triste1..4): toca
+; uma nota na hora e mais tres com atraso, contadas por derrota_espera --
+; mesma ideia do menu_espera/MENU_ESPERA_ECO1/2 pro "plin" e o eco dele.
+derrota_tocando: .res 1
+derrota_espera:  .res 1
 jogo_tmp:    .res 1
 jogo_tmp2:   .res 1
 placar_sujo: .res 1
@@ -1711,6 +1723,7 @@ atualiza_jogo:
 
     cmp #$02                 ; derrota: B tenta de novo, START desiste
     bne @nao_derrota
+    jsr toca_triste_tick      ; avanca a fraseszinha triste, se ainda tocando
     lda botoes_novos
     and #BTN_START
     beq @checa_b_derrota
@@ -1779,13 +1792,16 @@ reinicia_jogo:
     sta pz_ativa
     sta pz_ativa+1
     sta pz_ativa+2
-    lda #120
+    sta derrota_tocando        ; corta a fraseszinha triste se ainda
+    lda #120                    ; estivesse tocando
     sta ultimo_pz_x
     lda #ESPERA_BASE
     sta jogo_espera
     lda #VEL_BASE
     sta jogo_vel
-    jmp mostra_jogando
+    lda #$01                   ; retoma o refrao de onde musica_para deixou
+    sta musica_liga             ; (so 1 byte -- musica_para nao tocou em
+    jmp mostra_jogando          ; ch_ptr/ch_wait/ch_vol, nao precisa reiniciar)
 
 ; --------------------------------------------------------------------------
 ;  Move as pizzas ativas, spawna novas e detecta captura ou erro.
@@ -1988,6 +2004,38 @@ checa_derrota:
     sta pz_ativa                ; caindo (mesmo motivo do checa_vitoria)
     sta pz_ativa+1
     sta pz_ativa+2
+
+    jsr musica_para             ; pausa o refrao -- so registrador/A, seguro
+    lda #$01                    ; chamar daqui de dentro do laco de pizzas
+    sta derrota_tocando
+    lda #DERROTA_ESPERA_INICIAL
+    sta derrota_espera
+    jsr toca_triste1             ; a primeira nota toca na hora
+@fim:
+    rts
+
+; ---- avanca a fraseszinha triste (notas 2-4) -- chamada todo quadro
+; enquanto jogo_fase==2, do laco principal (ver atualiza_jogo) ----
+toca_triste_tick:
+    lda derrota_tocando
+    beq @fim
+    dec derrota_espera
+    lda derrota_espera
+    cmp #DERROTA_NOTA2
+    bne @nao_nota2
+    jsr toca_triste2
+@nao_nota2:
+    lda derrota_espera
+    cmp #DERROTA_NOTA3
+    bne @nao_nota3
+    jsr toca_triste3
+@nao_nota3:
+    lda derrota_espera
+    cmp #DERROTA_NOTA4
+    bne @fim
+    jsr toca_triste4
+    lda #$00
+    sta derrota_tocando         ; acabou -- para de contar
 @fim:
     rts
 
@@ -2019,10 +2067,28 @@ som_cai:
 
 ; --------------------------------------------------------------------------
 ;  Monta a OAM do minigame: a Amanda (sprites 0-7, o mesmo monta_oam da
-;  pizzaria) e ate 3 pizzas (sprites 8-13, 2 tiles cada).
+;  pizzaria) e ate 3 pizzas (sprites 8-13, 2 tiles cada). Na derrota
+;  (fase 2), o bonequinho dela some da tela -- so o retrato grande e
+;  triste fica, ate ela apertar B pra tentar de novo (ver reinicia_jogo).
 ; --------------------------------------------------------------------------
 atualiza_oam_jogo:
+    lda jogo_fase
+    cmp #$02
+    bne @com_amanda
+    ldx #$00
+@esconde_amanda:
+    lda #$FF
+    sta oam, x
+    inx
+    inx
+    inx
+    inx
+    cpx #$20                 ; sprites 0-7 = bytes 0-31
+    bne @esconde_amanda
+    jmp @pizzas
+@com_amanda:
     jsr monta_oam
+@pizzas:
     ldx #$00
     ldy #$20                 ; sprite 8 = byte 32
 @loop:
@@ -2321,6 +2387,57 @@ toca_eco2:
     lda per_hi + PLIN_NOTA
     ora #(9 << 3)
     sta $4003
+    rts
+
+; --------------------------------------------------------------------------
+;  A fraseszinha triste da derrota (B3-G3-E3-D3, ver TRISTE em
+;  tools/make_song.py), disparada por checa_derrota + o contador
+;  derrota_espera (ver atualiza_jogo). Toca no pulso 2 -- livre porque
+;  musica_para ja pausou o motor de 3 canais nesse instante -- com duty
+;  12.5% (mais fino, pra nao confundir com o "plin" nem o eco, que usam
+;  50%/25%) e um diminuendo leve de uma nota pra outra. Indice 14 no
+;  contador de duracao = 26 quadros, quase encostando na proxima nota
+;  (DERROTA_PASSO=25): mais sustentado que o "plin" (indice 9 = 8
+;  quadros), pra soar mais choroso que staccato.
+; --------------------------------------------------------------------------
+toca_triste1:
+    lda #%00011100           ; duty 12.5%, volume constante 12
+    sta $4004
+    lda per_lo + TRISTE_NOTA1
+    sta $4006
+    lda per_hi + TRISTE_NOTA1
+    ora #(14 << 3)
+    sta $4007
+    rts
+
+toca_triste2:
+    lda #%00011011           ; volume 11
+    sta $4004
+    lda per_lo + TRISTE_NOTA2
+    sta $4006
+    lda per_hi + TRISTE_NOTA2
+    ora #(14 << 3)
+    sta $4007
+    rts
+
+toca_triste3:
+    lda #%00011010           ; volume 10
+    sta $4004
+    lda per_lo + TRISTE_NOTA3
+    sta $4006
+    lda per_hi + TRISTE_NOTA3
+    ora #(14 << 3)
+    sta $4007
+    rts
+
+toca_triste4:
+    lda #%00011000           ; volume 8 -- a mais fraca, o suspiro final
+    sta $4004
+    lda per_lo + TRISTE_NOTA4
+    sta $4006
+    lda per_hi + TRISTE_NOTA4
+    ora #(14 << 3)
+    sta $4007
     rts
 
 musica_tick:
