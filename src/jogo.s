@@ -804,7 +804,12 @@ atualiza_senta:
     cmp #VICTOR_Y
     beq @chegou_y
     dec player_y
-    jmp @desenha
+    lda player_y
+    cmp #(MESA_Y+1)           ; ainda na frente da mesa (y > MESA_Y)?
+    bcs @desenha              ; sim: continua desenhando com pernas
+    lda #$01                  ; nao: ja passou da borda da mesa -- esconde
+    sta amanda_sentada        ; as pernas AGORA, nao so quando a subida
+    jmp @desenha              ; terminar, senao ela atravessa o tampo
 @chegou_y:
     lda #$01
     sta amanda_sentada        ; a partir de agora ela desenha sentada
@@ -872,7 +877,12 @@ atualiza_senta_victor:
     cmp #VICTOR_Y
     beq @chegou_y
     dec victor_y
-    jmp @desenha
+    lda victor_y
+    cmp #(MESA_Y+1)           ; ainda na frente da mesa (y > MESA_Y)?
+    bcs @desenha              ; sim: continua desenhando com pernas
+    lda #$01                  ; nao: ja passou da borda da mesa -- esconde
+    sta victor_sentado         ; as pernas AGORA, nao so quando a subida
+    jmp @desenha               ; terminar, senao ele atravessa o tampo
 @chegou_y:
     lda #$01
     sta victor_sentado         ; a partir de agora ele desenha sentado

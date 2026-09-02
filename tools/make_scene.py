@@ -189,11 +189,11 @@ def desenhar():
 
     # --------------------------------------- mesa da frente, com a bandeja
     paleta(16, 22, 14, 6, 1)
-    rect(16 * 8, 22 * 8, 14 * 8, 5 * 8, 2)         # tampo de madeira clara
-    rect(16 * 8, 22 * 8, 14 * 8, 3, 3)             # quina iluminada
+    rect(16 * 8, MESA_Y, 14 * 8, 5 * 8, 2)         # tampo de madeira clara
+    rect(16 * 8, MESA_Y, 14 * 8, 3, 3)             # quina iluminada
     rect(16 * 8, 27 * 8 - 5, 14 * 8, 5, 1)         # sombra da borda
-    bandeja(19 * 8, 22 * 8 + 8)
-    guardanapos(27 * 8 + 4, 22 * 8 + 6)
+    bandeja(19 * 8, MESA_Y + 8)
+    guardanapos(27 * 8 + 4, MESA_Y + 6)
 
     cadeira(13 * 8 + 4, 21 * 8 + 4)                # cadeiras em volta
     cadeira(30 * 8 + 2, 21 * 8 + 4)
@@ -439,6 +439,13 @@ FALA = [linha for _, grupo in GRUPOS_FALA for linha in grupo]
 # -- ver PARTE_SENTAR/senta_fase em src/jogo.s
 PARTE_SENTAR = 2
 
+# topo da mesa da frente (a quina iluminada, ver desenhar() abaixo) -- o
+# assembly usa isso pra saber, durante a animacao de sentar, a partir de
+# que Y o personagem ja "entrou" na mesa e precisa trocar pro desenho sem
+# pernas (ver atualiza_senta/atualiza_senta_victor). Emitido em vez de
+# escrito a mao em jogo.s pra nao duplicar um numero que so existe aqui.
+MESA_Y = 22 * 8
+
 # ================================================================== saida
 
 def fatiar():
@@ -559,6 +566,7 @@ def main():
                f"N_FALAS       = {len(FALA)}",
                f"N_PARTES      = {len(GRUPOS_FALA)}",
                f"PARTE_SENTAR  = {PARTE_SENTAR}",
+               f"MESA_Y        = {MESA_Y}",
                f"TILE_BRANCO   = ${DLG_BRANCO:02X}",
                f"TILE_BORDA    = ${DLG_BORDA:02X}", ""]
     open("build/dialogo.inc", "w").write("\n".join(linhas))
