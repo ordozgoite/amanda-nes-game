@@ -765,13 +765,22 @@ boca_amanda:
 ;  tamanho errado -- ela precisa MESMO se mover ate a mesa antes de sentar.
 ;  Nao le botao nenhum: e uma cutscene curta, nao um trecho jogavel.
 ; --------------------------------------------------------------------------
+; --------------------------------------------------------------------------
+;  A animacao de sentar da Amanda agora e disparada em DOIS momentos
+;  separados, nao mais um so: primeiro ela so ANDA ate ficar alinhada com
+;  o lugar dela (fase 1, disparada no B perto dele -- ver atualiza_cena),
+;  e o dialogo comeca com os dois em pe. So mais tarde, bem antes da fala
+;  "vem, senta aqui do meu lado" (PARTE_SENTAR), e que ela SOBE de verdade
+;  pra cadeira (fase 2, disparada em passo_dialogo -- ver @fechando). As
+;  duas fases nunca se seguem automaticamente uma da outra, entao o
+;  despachante so precisa saber qual das duas esta ativa.
+; --------------------------------------------------------------------------
 atualiza_senta:
     lda senta_fase
     cmp #$01
     beq @andando
-    cmp #$02
-    beq @subindo
-    jmp abre_dialogo_apos_sentar   ; fase 3: ela sentou, agora sim comeca o dialogo
+    jmp @subindo              ; so sobra a fase 2 -- nunca chega aqui com
+                               ; outro valor (ver atualiza_cena)
 
 @andando:
     lda player_x
@@ -796,12 +805,12 @@ atualiza_senta:
     sta player_frame
     jmp @desenha
 @chegou_x:
-    lda #$02                 ; parou de andar: agora sobe ate a mesa
-    sta senta_fase
-    lda #$00
-    sta player_frame
+    lda #$00                 ; so alinhou -- ainda em pe. O dialogo comeca
+    sta senta_fase             ; do zero, os dois de pe (ver PARTE_SENTAR
+    lda #$00                   ; mais adiante, que dispara a fase 2 quando
+    sta player_frame            ; for a vez dela se sentar de verdade).
     sta player_anim
-    jmp @desenha
+    jmp abre_dialogo_de_pe
 
 @subindo:
     lda player_y
@@ -815,10 +824,11 @@ atualiza_senta:
     sta amanda_sentada        ; as pernas AGORA, nao so quando a subida
     jmp @desenha              ; terminar, senao ela atravessa o tampo
 @chegou_y:
+    lda #$00
+    sta senta_fase
     lda #$01
     sta amanda_sentada        ; a partir de agora ela desenha sentada
-    lda #$03
-    sta senta_fase
+    jmp avanca_apos_sentar    ; abre a caixa de PARTE_SENTAR, ja sentada
 
 @desenha:
     jsr desenha_victor
@@ -827,8 +837,8 @@ atualiza_senta:
     jsr boca_amanda
     rts
 
-; ---- ela acabou de sentar: abre o dialogo do zero (parte 0) ----
-abre_dialogo_apos_sentar:
+; ---- ela terminou de andar (ainda em pe): abre o dialogo do zero ----
+abre_dialogo_de_pe:
     lda #$00
     sta senta_fase
     sta dlg_parte             ; primeira parte do dialogo inteiro
@@ -1356,12 +1366,20 @@ passo_dialogo:
     jsr restaura_atributos
     lda dlg_parte
     cmp #PARTE_SENTAR
-    bne @sem_sentar
+    bne @nao_e_convite
     lda #$00                  ; era o convite pra ele sentar: anima em vez de
     sta dialogo                ; abrir a proxima caixa direto. Zerar 'dialogo'
     lda #$01                   ; e essencial -- sem isso o passo_dialogo reentra
     sta victor_senta_fase      ; em @fechando todo NMI (dialogo ainda seria 4) e
     rts                        ; forca victor_senta_fase de volta pra 1 pra sempre.
+@nao_e_convite:
+    cmp #(PARTE_SENTAR-1)      ; a PROXIMA parte e o convite pra sentar?
+    bne @sem_sentar
+    lda #$00                  ; entao e a vez DELA sentar antes de falar --
+    sta dialogo                ; mesmo motivo do zerar 'dialogo' acima.
+    lda #$02                   ; pula direto pra fase 2 (subir): ela ja esta
+    sta senta_fase              ; alinhada em x desde o inicio do dialogo.
+    rts
 @sem_sentar:
     inc dlg_parte
     lda dlg_parte

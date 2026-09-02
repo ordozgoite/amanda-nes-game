@@ -188,26 +188,25 @@ def main():
     check("o aviso fica sobre a cabeca dele, em pe (x=160, nao a cadeira)",
           d.bus.oam[67] == 160 and d.bus.oam[64] < 192)
 
-    # B nao abre o balao na hora: ela senta do lado dele primeiro (mesma
-    # animacao de sempre, so que disparada aqui em vez de no meio do
-    # dialogo -- ver atualiza_cena/atualiza_senta em src/jogo.s)
+    # B nao abre o balao na hora: ela so anda ate ficar alinhada com o
+    # lugar dela (mesmo X de quando sentada), mas continua em pe -- o
+    # dialogo comeca com os dois de pe. Ela so senta de verdade bem antes
+    # do convite DELA pra ele sentar (PARTE_SENTAR, checado mais abaixo).
     d.frame(BTN_B)
     for _ in range(150):
         d.frame()
         if d.bus.ram[sym["dialogo"]] != 0: break
-    check("ela sentou antes do balao abrir",
-          d.bus.ram[sym["amanda_sentada"]] == 1
+    check("ela se alinhou mas continua em pe quando o balao abre",
+          d.bus.ram[sym["amanda_sentada"]] == 0
           and d.bus.ram[sym["player_x"]] == 200
-          and d.bus.ram[sym["player_y"]] == 152,
+          and d.bus.ram[sym["player_y"]] == 192,
           f"sentada={d.bus.ram[sym['amanda_sentada']]} x={d.bus.ram[sym['player_x']]} "
           f"y={d.bus.ram[sym['player_y']]}")
-    # sentada: so cabeca+tronco (sprites 0,1,2,4,5,6); pernas (sprites 3 e 7)
-    # escondidas, como as do Victor por tras da mesa
-    check("as pernas dela ficam escondidas, sentada",
-          d.bus.oam[3*4] >= 0xEF and d.bus.oam[7*4] >= 0xEF,
+    # em pe: as pernas dela ainda aparecem (sprites 3 e 7) -- diferente de
+    # quando ela senta de verdade, mais adiante nesta mesma conversa
+    check("as pernas dela ainda aparecem, em pe",
+          d.bus.oam[3*4] < 0xEF and d.bus.oam[7*4] < 0xEF,
           f"y3={d.bus.oam[12]} y7={d.bus.oam[28]}")
-    check("cabeca e tronco continuam visiveis, sentada",
-          d.bus.oam[0] < 0xEF and d.bus.oam[2*4] < 0xEF)
     check("so entao o balao abre", d.bus.ram[sym["dialogo"]] in (1, 2),
           f"estado {d.bus.ram[sym['dialogo']]}")
     check("o aviso some com o balao aberto", d.bus.oam[64] >= 0xEF)
@@ -292,6 +291,15 @@ def main():
         if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
             coracao = d.bus.vram[0x2000 + (linha + 1)*32 + col + 6]
             check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
+        if parte == 2:   # PARTE_SENTAR: ela sentou ANTES desta fala (o convite)
+            check("a animacao de sentar da Amanda terminou: ela esta sentada",
+                  d.bus.ram[sym["amanda_sentada"]] == 1)
+            check("ela esta na cadeira dela (x=200, y=152)",
+                  d.bus.ram[sym["player_x"]] == 200 and d.bus.ram[sym["player_y"]] == 152,
+                  f"x={d.bus.ram[sym['player_x']]} y={d.bus.ram[sym['player_y']]}")
+            check("as pernas dela ficam escondidas, sentada",
+                  d.bus.oam[3*4] >= 0xEF and d.bus.oam[7*4] >= 0xEF,
+                  f"y3={d.bus.oam[12]} y7={d.bus.oam[28]}")
         if parte == 3:   # a primeira parte depois do convite pra ELE sentar
             check("a animacao de sentar do Victor terminou: ele esta sentado",
                   d.bus.ram[sym["victor_sentado"]] == 1)
