@@ -65,7 +65,9 @@ TILE_VICTOR = 16
 VICTOR_X    = 176   ; atras da mesa, com a bandeja na frente dele -- e onde ele senta
 VICTOR_Y    = 152
 AMANDA_SENTADA_X = 200   ; do lado direito dele, no mesmo banco da mesa
-PERTO_MIN   = 152   ; faixa de x em que o aviso aparece
+PERTO_MIN   = 128   ; faixa de x em que o aviso aparece -- comeca na borda
+                     ; esquerda da mesa da frente (16*8, ver make_scene.py),
+                     ; bem antes dela chegar exatamente do lado dele
 PERTO_MAX   = 201
 TILE_BOCA_E = 22    ; Victor sentado de boca aberta
 TILE_BOCA_D = 23
