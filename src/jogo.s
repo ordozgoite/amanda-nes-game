@@ -21,11 +21,13 @@ JOY1      = $4016
 BANCO_MENU = 0
 BANCO_CENA = 1
 BANCO_JOGO = 2
+BANCO_CARRO = 3
 
 ; ---- telas ----
 TELA_MENU = 0
 TELA_CENA = 1
 TELA_JOGO = 2
+TELA_CARRO = 3
 
 ; ---- botoes, na ordem em que o controle os entrega ----
 BTN_A     = $80
@@ -114,7 +116,6 @@ ESPERA_MIN      = 30     ; nunca mais rapido que isso
 SALTO_MAX       = 80     ; o x de uma pizza fica a no maximo isso do x da anterior
 VEL_BASE        = 1      ; pixels por quadro, no comeco
 VEL_MAX         = 3
-DURACAO_COMEMORA = 90    ; quadros que a tela de vitoria fica parada
 ; a fraseszinha triste da derrota: nota 1 toca na hora (checa_derrota),
 ; as outras tres a cada DERROTA_PASSO quadros -- ver derrota_espera
 DERROTA_ESPERA_INICIAL = 75
@@ -122,6 +123,15 @@ DERROTA_PASSO          = 25
 DERROTA_NOTA2 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO
 DERROTA_NOTA3 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO*2
 DERROTA_NOTA4 = DERROTA_ESPERA_INICIAL - DERROTA_PASSO*3
+; a fraseszinha feliz da vitoria -- mesma ideia, mais rapida (notas mais
+; curtas, ver toca_feliz1..4). Prefixo VITORIA_ (nao FELIZ_) de proposito:
+; FELIZ_NOTA1..4 ja e o nome das notas musicais (ver musica.inc/
+; make_song.py) -- mesma pegadinha que separou TRISTE_NOTAn de DERROTA_NOTAn.
+VITORIA_ESPERA_INICIAL = 45
+VITORIA_PASSO          = 15
+VITORIA_NOTA2 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO
+VITORIA_NOTA3 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*2
+VITORIA_NOTA4 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*3
 CAPTURA_Y_MIN   = CHAO_Y - 4
 CAPTURA_Y_MAX   = CHAO_Y + 24
 ; HUD: barra de pontos (PONTOS_MIN segmentos, linha 2) e vidas (ERROS_MAX
@@ -208,7 +218,6 @@ jogo_pontos: .res 1
 jogo_erros:  .res 1
 jogo_vel:    .res 1
 jogo_espera: .res 1
-jogo_temp:   .res 1
 jogo_venceu: .res 1         ; 1 = ja disparou a comemoracao nesta rodada
 ; checa_vitoria/checa_derrota rodam de dentro do laco de pizzas
 ; (atualiza_pizzas) -- trocar de nametable ali no meio clobber ia o X do
@@ -220,6 +229,8 @@ jogo_troca:  .res 1
 ; mesma ideia do menu_espera/MENU_ESPERA_ECO1/2 pro "plin" e o eco dele.
 derrota_tocando: .res 1
 derrota_espera:  .res 1
+vitoria_tocando: .res 1        ; o mesmo esquema, pra fraseszinha feliz
+vitoria_espera:  .res 1
 jogo_tmp:    .res 1
 jogo_tmp2:   .res 1
 placar_sujo: .res 1
@@ -228,6 +239,15 @@ ultimo_pz_x: .res 1         ; x da ultima pizza que nasceu, pra limitar o salto
 pz_x:        .res 3
 pz_y:        .res 3
 pz_ativa:    .res 3
+
+; --- cena do carro ---
+; scroll horizontal em 9 bits (0-511, as duas telas coladas -- ver
+; make_carro.py): carro_scroll e o byte baixo (val de PPUSCROLL), carro_nt
+; e o bit de qual nametable ($2000 ou $2400) esta na base -- os dois
+; incrementados a cada NMI (ver nmi/atualiza_scroll_carro), pra rolagem
+; ficar suave mesmo sem nada rodando no laco principal.
+carro_scroll: .res 1
+carro_nt:     .res 1
 
 ; --- musica ---
 musica_liga: .res 1         ; 0 = motor desligado (menu, em silencio)
@@ -261,6 +281,12 @@ nam_jogo:         .incbin "jogo.nam"          ; tela jogando (4 paginas)
 nam_jogo_intro:   .incbin "jogo_intro.nam"    ; "PEGUE N PIZZAS!" -- antes de comecar
 nam_jogo_vitoria: .incbin "jogo_vitoria.nam"  ; "PARABENS!" -- ao alcancar PONTOS_MIN
 nam_jogo_derrota: .incbin "jogo_derrota.nam"  ; retrato triste -- ao alcancar ERROS_MAX
+
+.segment "BANK3"
+chr_carro:         .incbin "chr_carro.bin"         ; ceu, predios, rua (4 paginas)
+chr_sprites_carro:  .incbin "chr_sprites_carro.bin"  ; carro + as duas cabecas
+nam_carro0:        .incbin "carro_nt0.nam"         ; metade esquerda (vai em $2000)
+nam_carro1:        .incbin "carro_nt1.nam"         ; metade direita (vai em $2400)
 
 ; ==========================================================================
 .segment "CODE"
@@ -337,6 +363,11 @@ principal:
     beq @menu
     cmp #TELA_CENA
     beq @cena
+    cmp #TELA_JOGO
+    beq @jogo
+    jsr atualiza_carro
+    jmp principal
+@jogo:
     jsr atualiza_jogo
     jmp principal
 @menu:
@@ -1181,6 +1212,150 @@ troca_nametable_jogo:
     jmp liga_tela
 
 ; ==========================================================================
+;  Tela: o carro -- por enquanto so o visual (o carro parado, os predios e
+;  a rua deslizando atras). A conversa entra num passo futuro; por hora a
+;  cena so fica em loop ate START (volta pro menu, ver atualiza_carro).
+; ==========================================================================
+CARRO_X = 100    ; posicao fixa na tela -- o carro e sprite, nao rola com
+CARRO_Y = 150    ; o fundo (e assim que ele parece "parado" enquanto anda)
+
+carrega_carro:
+    lda #$01
+    sta carregando
+    jsr desliga_tela
+
+    lda #BANCO_CARRO
+    jsr troca_banco
+
+    jsr musica_para          ; sem musica nessa cena por enquanto (so o visual)
+
+    bit PPUSTATUS            ; ceu/predios/rua -> pattern table 1 (fundo)
+    PPU_ADDR $1000
+    lda #<chr_carro
+    sta ptr
+    lda #>chr_carro
+    sta ptr+1
+    lda #PAGINAS_CARRO
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $0000            ; o carro + as duas cabecas -> pattern table 0
+    lda #<chr_sprites_carro
+    sta ptr
+    lda #>chr_sprites_carro
+    sta ptr+1
+    lda #2
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $2000             ; metade esquerda do loop de 512px
+    lda #<nam_carro0
+    sta ptr
+    lda #>nam_carro0
+    sta ptr+1
+    lda #4
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $2400             ; metade direita -- $2400 e uma tela DIFERENTE
+    lda #<nam_carro1           ; de $2000 porque o cartucho usa espelhamento
+    sta ptr                     ; vertical (ver HEADER); e assim que a rolagem
+    lda #>nam_carro1            ; horizontal de hardware funciona
+    sta ptr+1
+    lda #4
+    sta paginas
+    jsr copia_ppu
+
+    lda #<paletas_carro
+    sta ptr
+    lda #>paletas_carro
+    sta ptr+1
+    jsr carrega_paletas
+
+    jsr esconde_sprites
+    jsr monta_oam_carro
+
+    lda #$00
+    sta carro_scroll
+    sta carro_nt
+
+    lda #TELA_CARRO
+    sta tela
+    lda #$00
+    sta carregando
+    jmp liga_tela
+
+; --------------------------------------------------------------------------
+;  Monta a OAM do carro: 20 sprites pra lataria (5 tiles de largura por 4
+;  de altura, ver CARRO em tools/make_carro.py) mais 2 pras cabecas, que
+;  ficam desenhadas por CIMA do para-brisa (outra paleta -- a mesma
+;  cabelo/pele/laco de sempre). So roda uma vez, na carga da cena: nada
+;  aqui muda quadro a quadro, entao nao precisa redesenhar no laco
+;  principal (o NMI manda a mesma OAM de novo sozinho, todo quadro).
+; --------------------------------------------------------------------------
+monta_oam_carro:
+    ldx #$00
+    ldy #$00
+@loop:
+    txa
+    and #$03                 ; linha do tile (0-3) = indice mod 4
+    asl
+    asl
+    asl                       ; *8
+    clc
+    adc #CARRO_Y
+    sta oam, y
+
+    txa
+    sta oam+1, y
+
+    lda #$00                  ; paleta 0 (a lataria)
+    sta oam+2, y
+
+    txa
+    lsr
+    lsr                        ; coluna do tile (0-4) = indice / 4
+    asl
+    asl
+    asl                        ; *8
+    clc
+    adc #CARRO_X
+    sta oam+3, y
+
+    iny
+    iny
+    iny
+    iny
+    inx
+    cpx #20
+    bne @loop
+
+    lda #(CARRO_Y+1)           ; as duas cabecas, sprites 20 e 21
+    sta oam, y
+    sta oam+4, y
+    lda #20                    ; Victor
+    sta oam+1, y
+    lda #21                    ; Amanda
+    sta oam+5, y
+    lda #$01                   ; paleta 1 (as cabecas)
+    sta oam+2, y
+    sta oam+6, y
+    lda #(CARRO_X+16)
+    sta oam+3, y
+    lda #(CARRO_X+24)
+    sta oam+7, y
+    rts
+
+; ---- laco principal da cena do carro: por enquanto so espera START ----
+atualiza_carro:
+    lda botoes_novos
+    and #BTN_START
+    beq @fim
+    jmp carrega_menu
+@fim:
+    rts
+
+; ==========================================================================
 ;  Sprites: o personagem sao 6 tiles, 2 de largura por 3 de altura
 ; ==========================================================================
 monta_oam:
@@ -1736,12 +1911,13 @@ atualiza_jogo:
     jmp @so_desenha
 @nao_derrota:
 
-    cmp #$01                 ; vitoria: pizzas pausadas, so conta o tempo
+    cmp #$01                 ; vitoria: espera B pra ir pra cena do carro
     bne @jogando
-    dec jogo_temp
-    bne @so_desenha
-    jsr mostra_jogando
-    jmp @so_desenha
+    jsr toca_feliz_tick        ; avanca a fraseszinha feliz, se ainda tocando
+    lda botoes_novos
+    and #BTN_B
+    beq @so_desenha
+    jmp carrega_carro
 
 @jogando:
     jsr move_jogador
@@ -1769,7 +1945,8 @@ troca_tela_do_estado:
     jmp troca_nametable_jogo
 
 ; ---- volta (ou comeca) a jogar: nametable "jogando", fase 0. Usada pra
-; sair da intro e pra voltar da tela de vitoria. ----
+; sair da intro e (via reinicia_jogo) pra tentar de novo apos a derrota --
+; a vitoria agora vai direto pra cena do carro, nao volta mais aqui. ----
 mostra_jogando:
     lda #<nam_jogo
     sta ptr
@@ -1983,12 +2160,44 @@ checa_vitoria:
     sta jogo_venceu
     sta jogo_fase
     sta jogo_troca             ; atualiza_jogo troca a tela no topo do
-    lda #DURACAO_COMEMORA      ; laco principal (nao daqui -- checa_vitoria
-    sta jogo_temp               ; roda dentro do laco de pizzas)
+                                 ; laco principal (nao daqui -- checa_vitoria
+                                 ; roda dentro do laco de pizzas)
     lda #$00                   ; esconde qualquer pizza que ainda estivesse
     sta pz_ativa                ; caindo -- senao ela fica flutuando parada
     sta pz_ativa+1               ; por cima da tela de vitoria/derrota
     sta pz_ativa+2
+
+    jsr musica_para              ; pausa o refrao, mesmo esquema da derrota
+    lda #$01
+    sta vitoria_tocando
+    lda #VITORIA_ESPERA_INICIAL
+    sta vitoria_espera
+    jsr toca_feliz1               ; a primeira nota toca na hora
+@fim:
+    rts
+
+; ---- avanca a fraseszinha feliz (notas 2-4) -- chamada todo quadro
+; enquanto jogo_fase==1, do laco principal (ver atualiza_jogo) ----
+toca_feliz_tick:
+    lda vitoria_tocando
+    beq @fim
+    dec vitoria_espera
+    lda vitoria_espera
+    cmp #VITORIA_NOTA2
+    bne @nao_nota2
+    jsr toca_feliz2
+@nao_nota2:
+    lda vitoria_espera
+    cmp #VITORIA_NOTA3
+    bne @nao_nota3
+    jsr toca_feliz3
+@nao_nota3:
+    lda vitoria_espera
+    cmp #VITORIA_NOTA4
+    bne @fim
+    jsr toca_feliz4
+    lda #$00
+    sta vitoria_tocando          ; acabou -- para de contar
 @fim:
     rts
 
@@ -2214,6 +2423,32 @@ liga_tela:
     sta PPUMASK
     rts
 
+; --------------------------------------------------------------------------
+;  Rolagem horizontal da cena do carro -- roda todo NMI (ver nmi). Escreve
+;  o proprio PPUSCROLL/PPUCTRL (por isso pula o @scroll generico de 0,0) e
+;  incrementa carro_scroll: quando ele da a volta em 256, alterna
+;  carro_nt -- e assim que os 512px das duas nametables coladas (ver
+;  make_carro.py) viram um scroll continuo de 0 a 511 que da a volta
+;  sozinho, sem custura, porque o desenho e periodico nesse tamanho.
+; --------------------------------------------------------------------------
+atualiza_scroll_carro:
+    lda carro_scroll
+    sta PPUSCROLL
+    lda #$00
+    sta PPUSCROLL             ; sem scroll vertical
+
+    lda #%10010000            ; os mesmos bits fixos de liga_tela...
+    ora carro_nt                ; ...mais qual nametable esta na base
+    sta PPUCTRL
+
+    inc carro_scroll           ; anda 1px por quadro -- de proposito devagar,
+    bne @fim                    ; um passeio, nao uma corrida
+    lda carro_nt
+    eor #$01
+    sta carro_nt
+@fim:
+    rts
+
 ; ---- copia 'paginas' x 256 bytes de (ptr) pra onde PPUADDR aponta ----
 copia_ppu:
     ldy #$00
@@ -2263,7 +2498,9 @@ nmi:
     beq @menu
     cmp #TELA_CENA
     beq @cena
-    jsr desenha_hud
+    cmp #TELA_CARRO
+    beq @carro
+    jsr desenha_hud          ; so sobra TELA_JOGO aqui
     jmp @scroll
 @menu:
     jsr pulsa_coracao
@@ -2271,6 +2508,10 @@ nmi:
     jmp @scroll
 @cena:
     jsr passo_dialogo
+    jmp @scroll
+@carro:
+    jsr atualiza_scroll_carro   ; escreve o proprio PPUSCROLL/PPUCTRL --
+    jmp @so_musica               ; pula o @scroll generico (0,0) abaixo
 
 @scroll:
     lda #$00
@@ -2437,6 +2678,56 @@ toca_triste4:
     sta $4006
     lda per_hi + TRISTE_NOTA4
     ora #(14 << 3)
+    sta $4007
+    rts
+
+; --------------------------------------------------------------------------
+;  O espelho do toca_triste: a fraseszinha feliz da vitoria (G3-B3-D4-G4,
+;  ver FELIZ em tools/make_song.py), disparada por checa_vitoria + o
+;  contador feliz_espera (ver atualiza_jogo). Duty 50% e crescendo de
+;  volume (ao contrario do diminuendo triste) pra soar animado, tipo um
+;  "ta-da" -- e o mesmo pulso 2 (o refrao ja pausou nesse instante, ver
+;  musica_para). Indice 9 no contador de duracao = 8 quadros: mais curta
+;  e seca que a triste (indice 14), pra soar alegre/pontuada em vez de
+;  choroza.
+; --------------------------------------------------------------------------
+toca_feliz1:
+    lda #%10011010            ; duty 50%, volume constante 10
+    sta $4004
+    lda per_lo + FELIZ_NOTA1
+    sta $4006
+    lda per_hi + FELIZ_NOTA1
+    ora #(9 << 3)
+    sta $4007
+    rts
+
+toca_feliz2:
+    lda #%10011100            ; volume 12
+    sta $4004
+    lda per_lo + FELIZ_NOTA2
+    sta $4006
+    lda per_hi + FELIZ_NOTA2
+    ora #(9 << 3)
+    sta $4007
+    rts
+
+toca_feliz3:
+    lda #%10011101            ; volume 13
+    sta $4004
+    lda per_lo + FELIZ_NOTA3
+    sta $4006
+    lda per_hi + FELIZ_NOTA3
+    ora #(9 << 3)
+    sta $4007
+    rts
+
+toca_feliz4:
+    lda #%10011111            ; volume 15 -- o "ta-da" final, no maximo
+    sta $4004
+    lda per_lo + FELIZ_NOTA4
+    sta $4006
+    lda per_hi + FELIZ_NOTA4
+    ora #(10 << 3)             ; indice 10 = 60 quadros -- segura o "ta-da" final
     sta $4007
     rts
 
@@ -2638,9 +2929,13 @@ paletas_cena:
 paletas_jogo:
     .incbin "jogo.pal"
 
+paletas_carro:
+    .incbin "carro.pal"
+
 .include "musica.inc"
 .include "dialogo.inc"
 .include "jogo.inc"
+.include "carro.inc"
 
 .segment "VECTORS"
     .word nmi, reset, irq

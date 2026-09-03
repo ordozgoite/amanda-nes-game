@@ -177,6 +177,23 @@ def main():
     entra_no_minigame(nes3, sym)
     obs_jogo = [[], [], []]
     for _ in range(JANELA_JOGO + laco_jogo + 8):
+        # a gravacao dura quase 1 minuto -- tanto perder (5 erros) quanto
+        # VENCER (15 pontos) agora pausam a musica pra tocar uma
+        # fraseszinha (ver checa_derrota/checa_vitoria em jogo.s), o que
+        # derrubava esse teste sem ter nada a ver com ele. Pega pizza pra
+        # nao perder, mas trava um ponto antes de vencer de verdade -- e,
+        # ao travar, afasta o player de proposito (senao ele fica parado
+        # embaixo de onde a ultima pizza caiu e acaba pegando a PROXIMA sem
+        # querer, so por estar no lugar certo por acidente). Tambem nunca
+        # deixa os erros chegarem no fim -- so pra manter o refrao tocando
+        # sem interrupcao a gravacao inteira.
+        if nes3.bus.ram[sym["jogo_pontos"]] < 14:
+            if nes3.bus.ram[sym["pz_ativa"]]:
+                nes3.bus.ram[sym["player_x"]] = nes3.bus.ram[sym["pz_x"]]
+        else:
+            nes3.bus.ram[sym["player_x"]] = 0
+        if nes3.bus.ram[sym["jogo_erros"]] >= 4:
+            nes3.bus.ram[sym["jogo_erros"]] = 0
         nes3.frame()
         v = lidos(nes3.bus)
         for c in range(3):

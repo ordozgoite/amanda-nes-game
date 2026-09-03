@@ -42,18 +42,35 @@ def render(nes, chr_data=None, scale=3):
     pal = list(nes.bus.vram[0x3F00:0x3F20])
     img = Image.new("RGB", (256, 240))
     px = img.load()
-    for ty in range(30):
-        for tx in range(32):
-            tile = nes.bus.vram[0x2000 + ty * 32 + tx]
-            attr = nes.bus.vram[0x23C0 + (ty // 4) * 8 + (tx // 4)]
-            shift = ((ty & 2) << 1) | (tx & 2)
+
+    # rolagem horizontal (cena do carro -- ver PPUCTRL bit0 + PPUSCROLL em
+    # src/jogo.s): pra tela parada (scroll_x=0, bit0=0) isso cai exatamente
+    # no comportamento de sempre, entao nao precisa de um caminho separado.
+    base_nt = nes.bus.ppu_ctrl & 1
+    total_scroll = base_nt * 256 + nes.bus.scroll_x   # 0-511
+
+    tile_cache = {}
+    for sy in range(240):
+        ty = sy // 8
+        row = sy % 8
+        for sx in range(256):
+            src_x = (total_scroll + sx) % 512
+            nt_base = 0x2000 if src_x < 256 else 0x2400
+            local_x = src_x % 256
+            tile_col = local_x // 8
+            col_in_tile = local_x % 8
+            tile = nes.bus.vram[nt_base + ty * 32 + tile_col]
+            key = (nt_base, tile)
+            bits = tile_cache.get(key)
+            if bits is None:
+                bits = tile_pixels(chr_data, 1, tile)
+                tile_cache[key] = bits
+            attr = nes.bus.vram[nt_base + 0x3C0 + (ty // 4) * 8 + (tile_col // 4)]
+            shift = ((ty & 2) << 1) | (tile_col & 2)
             palnum = (attr >> shift) & 3
-            bits = tile_pixels(chr_data, 1, tile)
-            for y in range(8):
-                for x in range(8):
-                    c = bits[y][x]
-                    entry = pal[0] if c == 0 else pal[palnum * 4 + c]
-                    px[tx * 8 + x, ty * 8 + y] = NES_RGB[entry & 0x3F]
+            c = bits[row][col_in_tile]
+            entry = pal[0] if c == 0 else pal[palnum * 4 + c]
+            px[sx, sy] = NES_RGB[entry & 0x3F]
 
     # ---- sprites, por cima do fundo (ignorando prioridade) ----
     for i in range(0, 256, 4):

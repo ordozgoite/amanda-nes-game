@@ -69,10 +69,16 @@ for parte in range(13):
         print(CAPTURAS[parte])
     nes.frame(BTN_B)
 
-for _ in range(20):               # fecha a ultima caixa -> carrega o minigame
+for _ in range(20):               # fecha a ultima caixa -> carrega a intro do minigame
     nes.frame()
-render(nes).save("build/jogo-7-minigame.png")
-print("build/jogo-7-minigame.png (banco", nes.bus.banco, ")")
+render(nes).save("build/jogo-7-intro.png")
+print("build/jogo-7-intro.png (banco", nes.bus.banco, ")")
+
+nes.frame(BTN_B)                  # dispensa a intro -- so ai comeca a jogar
+for _ in range(10):
+    nes.frame()
+render(nes).save("build/jogo-7b-minigame.png")
+print("build/jogo-7b-minigame.png")
 
 for _ in range(120):              # deixa uma pizza nascer e cair um pouco
     nes.frame()
@@ -85,7 +91,18 @@ for _ in range(3000):             # pega pizzas ate ganhar
         nes.bus.ram[sym["player_x"]] = nes.bus.ram[sym["pz_x"]]
     if nes.bus.ram[sym["jogo_fase"]] == 1:
         break
-for _ in range(3):                # o placar leva 1 quadro pra alcancar o estado
+for _ in range(60):                # a fraseszinha feliz toca inteira
     nes.frame()
-render(nes).save("build/jogo-9-comemoracao.png")
-print("build/jogo-9-comemoracao.png  pontos =", nes.bus.ram[sym["jogo_pontos"]])
+render(nes).save("build/jogo-9-vitoria.png")
+print("build/jogo-9-vitoria.png  pontos =", nes.bus.ram[sym["jogo_pontos"]])
+
+nes.frame(BTN_B)                  # "APERTE B PRA CONTINUAR" -> cena do carro
+for _ in range(20):
+    nes.frame()
+render(nes).save("build/jogo-10-carro.png")
+print("build/jogo-10-carro.png (banco", nes.bus.banco, ")")
+
+for _ in range(150):               # deixa o cenario rolar um pouco
+    nes.frame()
+render(nes).save("build/jogo-11-carro-andando.png")
+print("build/jogo-11-carro-andando.png  scroll =", nes.bus.ram[sym["carro_scroll"]])

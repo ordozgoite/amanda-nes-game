@@ -1,7 +1,9 @@
 JOGO  = jogo.nes
 DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin \
         build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc \
-        build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc
+        build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc \
+        build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam \
+        build/carro_nt1.nam build/carro.pal build/carro.inc
 
 all: $(JOGO)
 
@@ -26,6 +28,10 @@ build/musica.inc: tools/make_song.py
 	@mkdir -p build
 	python3 tools/make_song.py build/musica.inc
 
+build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam build/carro_nt1.nam build/carro.pal build/carro.inc: tools/make_carro.py tools/make_chr.py
+	@mkdir -p build
+	python3 tools/make_carro.py
+
 # ---- o cartucho ----
 $(JOGO): src/jogo.s $(DADOS) unrom.cfg
 	ca65 -g --include-dir build --bin-include-dir build -o build/jogo.o src/jogo.s
@@ -46,6 +52,7 @@ audio: $(JOGO)
 	python3 tools/audio_dialogo.py
 	python3 tools/audio_minigame.py
 	python3 tools/audio_derrota.py
+	python3 tools/audio_vitoria.py
 
 rodar: $(JOGO)
 	fceux --sound 1 --volume 150 --xscale 3 --yscale 3 $(JOGO)

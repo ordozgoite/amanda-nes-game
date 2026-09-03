@@ -358,9 +358,13 @@ def main():
           (d.bus.apu[0x0C], d.bus.apu[0x0E], d.bus.apu[0x0F]) == (0x0C, 0x03, 0x48),
           f"${d.bus.apu[0x0C]:02X} ${d.bus.apu[0x0E]:02X} ${d.bus.apu[0x0F]:02X}")
     for _ in range(4): d.frame()
-    # UI_BASE/BARRA_ADDR/VIDAS_ADDR: ver tools/make_jogo.py e src/jogo.s --
-    # nao sao labels, so constantes (o mesmo caso do antigo DIG_BASE)
-    UI_BASE = 0xD7
+    # UI_BASE muda toda vez que a arte da tela do jogo cresce/encolhe (nao
+    # e um label, so uma constante -- ver build/jogo.inc, gerado por
+    # tools/make_jogo.py) -- le do arquivo em vez de hardcodar, pra nao
+    # desalinhar de novo como aconteceu (211 -> 210 so nessa sessao)
+    import re
+    UI_BASE = int(re.search(r"UI_BASE\s*=\s*\$([0-9A-Fa-f]+)",
+                             open("build/jogo.inc").read()).group(1), 16)
     UI_BARRA_VAZIA, UI_BARRA_CHEIA = UI_BASE, UI_BASE + 1
     UI_VIDA_CHEIA, UI_VIDA_VAZIA = UI_BASE + 2, UI_BASE + 3
     BARRA_ADDR = 0x2000 + 2*32 + 8
@@ -430,9 +434,34 @@ def main():
             break
     check("15 pontos disparam a comemoracao", v.bus.ram[sym["jogo_fase"]] == 1,
           f"pontos={v.bus.ram[sym['jogo_pontos']]} fase={v.bus.ram[sym['jogo_fase']]}")
-    for _ in range(150): v.frame()
-    check("a comemoracao acaba e o jogo continua",
-          v.bus.ram[sym["jogo_fase"]] == 0, f"fase={v.bus.ram[sym['jogo_fase']]}")
+    for _ in range(60): v.frame()          # a fraseszinha feliz toca inteira
+    check("o sprite dela continua visivel na vitoria (so a derrota esconde)",
+          v.bus.oam[0] < 0xEF, f"y0={v.bus.oam[0]}")
+    v.frame(BTN_B)                          # "APERTE B PRA CONTINUAR"
+    for _ in range(20): v.frame()           # carrega a cena do carro
+    check("B na vitoria leva pra cena do carro",
+          v.bus.ram[sym["tela"]] == 3 and v.bus.banco == 3,
+          f"tela={v.bus.ram[sym['tela']]} banco={v.bus.banco}")
+
+    print("\n== 9b. A cena do carro: rolagem e sprites ==")
+    # 20 sprites da lataria (0-19) + 2 cabecas (20, 21) -- todos visiveis,
+    # nenhum escondido (y >= 0xEF)
+    carro_oam = [v.bus.oam[i:i + 4] for i in range(0, 22 * 4, 4)]
+    check("os 22 sprites do carro (lataria + 2 cabecas) estao visiveis",
+          all(s[0] < 0xEF for s in carro_oam),
+          [s[0] for s in carro_oam if s[0] >= 0xEF])
+    scroll0 = v.bus.ram[sym["carro_scroll"]]
+    for _ in range(30): v.frame()
+    scroll1 = v.bus.ram[sym["carro_scroll"]]
+    check("o scroll horizontal avanca sozinho (o carro 'anda')",
+          scroll1 != scroll0, f"{scroll0} -> {scroll1}")
+    check("mas o sprite do carro fica parado na tela (so o fundo rola)",
+          v.bus.oam[3] == 100, f"x={v.bus.oam[3]}")   # CARRO_X, ver src/jogo.s
+    v.frame(BTN_START)
+    for _ in range(6): v.frame()
+    check("START na cena do carro volta pro menu (escape hatch de sempre)",
+          v.bus.ram[sym["tela"]] == 0 and v.bus.banco == 0,
+          f"tela={v.bus.ram[sym['tela']]} banco={v.bus.banco}")
 
     print("\n== 10. O minigame: derrota ao acumular ERROS_MAX ==")
     f = NES(ROM)

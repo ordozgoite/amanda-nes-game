@@ -316,6 +316,8 @@ class Bus:
         self.vblank = False
         self.latch = 0          # alterna entre byte alto e baixo de $2006/$2005
         self.vaddr = 0
+        self.scroll_x = 0       # os dois bytes que $2005 escreve, na ordem
+        self.scroll_y = 0       # (x primeiro) -- so pra telas com rolagem
 
         self.buttons = 0
         self.strobe = False
@@ -365,6 +367,10 @@ class Bus:
             elif reg == 1:
                 self.ppu_mask = v
             elif reg == 5:
+                if self.latch == 0:
+                    self.scroll_x = v
+                else:
+                    self.scroll_y = v
                 self.latch ^= 1
             elif reg == 6:
                 if self.latch == 0:

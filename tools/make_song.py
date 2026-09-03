@@ -145,6 +145,14 @@ PLIN = "A5"
 # comeca e termina em sol/re), pra nao soar destoante do resto do jogo.
 TRISTE = ["B3", "G3", "E3", "D3"]
 
+# --------------------------------------------------- efeito: a vitoria
+# O espelho do TRISTE -- 4 notas subindo em vez de descer, quando ela
+# alcanca PONTOS_MIN (ver checa_vitoria em jogo.s). G3-B3-D4-G4: um
+# arpejo de sol maior, a mesma tonica do refrao de "Amanda" (que e em
+# sol/mi menor) -- um "ta-da" que combina com o resto sem soar de outro
+# jogo.
+FELIZ = ["G3", "B3", "D4", "G4"]
+
 # confere que os tres canais de cada musica tem a mesma duracao: cada um
 # roda o proprio laco, entao qualquer diferenca faria eles se
 # desencontrarem aos poucos
@@ -167,6 +175,8 @@ def main():
              f"PLIN_NOTA = {indice(PLIN)}    ; nota do efeito do START no menu ({PLIN})"]
     for i, nome in enumerate(TRISTE):
         saida.append(f"TRISTE_NOTA{i+1} = {indice(nome)}    ; nota {i+1} da derrota ({nome})")
+    for i, nome in enumerate(FELIZ):
+        saida.append(f"FELIZ_NOTA{i+1} = {indice(nome)}    ; nota {i+1} da vitoria ({nome})")
     saida.append("")
 
     per = [0] * (N_NOTAS + 1)

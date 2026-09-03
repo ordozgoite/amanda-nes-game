@@ -125,17 +125,103 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   aviso "B" ficava flutuando bobo sobre a cena. Precisou zerar `perto` na
   mao no momento de disparar a animacao, ja que ninguem mais ia recalcula-lo
   ate ela terminar.
+- **Uma rotina que escreve num endereco FIXO da nametable (HUD, placar)
+  nao sabe qual "tela logica" esta ativa.** O minigame passou a ter quatro
+  nametables diferentes (jogando/intro/vitoria/derrota), todas carregadas
+  na mesma janela de memoria -- mas `desenha_hud` continuava rodando toda
+  vez que `placar_sujo` pedia, sem checar `jogo_fase`, e escrevia a barra/
+  vidas por cima da tela de intro (que nao tem esse layout ali). Rotinas
+  assim precisam checar explicitamente se a tela onde elas escrevem e a
+  que esta ativa.
+- **Estado de gameplay (pizzas caindo, sprite do personagem) nao se limpa
+  sozinho quando a "tela logica" muda por baixo dele.** `atualiza_oam_jogo`
+  desenhava `pz_ativa`/pizzas incondicionalmente; ao vencer ou perder, uma
+  pizza que ainda estivesse caindo continuava sendo desenhada, congelada,
+  por cima da tela de vitoria/derrota -- um sprite fantasma flutuando onde
+  nao devia. `checa_vitoria`/`checa_derrota` agora zeram `pz_ativa`
+  explicitamente ao trocar de fase.
+- **`paleta()` (em `make_scene.py`/`make_jogo.py`) espera coordenadas em
+  TILES, nao em pixels.** Chamar `paleta(x0, y0, ...)` com x0/y0 em pixel
+  (ex.: a posicao de um retrato desenhado com `px[y][x]=`) marca o bloco de
+  atributo errado -- a paleta acaba caindo numa regiao qualquer da tela, e
+  o desenho pega a cor de fundo errada (virou tudo roxo/azul do ceu, nao a
+  cor de pele/cabelo pretendida). Sempre dividir por 8 antes de chamar.
+- **Sorriso e choro nao sao so "cantos pra cima/baixo" -- e o CENTRO da boca
+  que inverte em relacao aos cantos.** Sorriso: cantos mais pra cima (indice
+  de linha menor) que o centro. Choro/frown: o oposto, cantos mais pra baixo
+  (indice maior) que o centro. `RETRATO_TRISTE` nasceu com as duas linhas
+  trocadas -- lia como sorriso, nao choro -- e so foi pego numa re-derivacao
+  visual cuidadosa, nao por teste (nenhum teste automatizado confere
+  "expressao facial"). `RETRATO_FELIZ` reaproveita o padrao ORIGINAL
+  (pre-troca) de `RETRATO_TRISTE`, que ja era um sorriso por acidente.
+- **Rolagem horizontal de hardware precisa de espelhamento vertical no
+  cartucho** (`$2000`/`$2400` viram duas telas DIFERENTES, lado a lado --
+  exatamente o que a rolagem horizontal precisa). O fundo tem que ser
+  desenhado como UMA imagem continua e periodica (521px = duas nametables
+  coladas); todo elemento que se repete precisa ter um periodo que divida
+  512 certinho (ver `make_carro.py`: predios a cada 64px, tracejado da rua
+  a cada 32px), senao a costura entre o fim e o comeco do loop fica visivel.
+- **O emulador (`tools/nesemu.py`) e o `tools/screenshot.py` nao sabiam nada
+  sobre `PPUSCROLL`** (a escrita em `$2005` so alternava o latch, o valor
+  em si era descartado, e o render sempre lia a partir de `$2000` fixo) --
+  porque nenhuma cena anterior tinha usado rolagem. Qualquer cena nova que
+  use um recurso de PPU inedito no projeto pode esbarrar num buraco assim
+  na ferramentagem, nao so no jogo; "olhe a imagem" so funciona se a
+  ferramenta que desenha a imagem souber renderizar o recurso novo.
+- **Um personagem sentado dentro de outro sprite maior (o carro) ainda
+  esbarra no limite de 8 sprites por linha de varredura.** O carro (5 tiles
+  x 4 tiles = 20 sprites de lataria + 2 cabecas) foi desenhado com esse
+  limite em mente desde o inicio -- nao da pra simplesmente aumentar a
+  escala de uma arte ja pronta (o mockup em PIL) sem recontar quantos
+  sprites caem em cada linha.
 
 ## Estado atual
 
 Pronto: tela de titulo (em silencio -- START toca um "plin" e leva pra
 pizzaria, que so ai comeca a musica), cenario da pizzaria, dialogo completo
-(incluindo a resposta dela), minigame das pizzas caindo (arcade rejogavel,
-com placar, derrota em `ERROS_MAX` erros e uma comemoracao ao alcancar
-`PONTOS_MIN` pontos).
+(incluindo a resposta dela, caixa do Victor mais a esquerda e da Amanda mais
+a direita, mesma altura pros dois -- acima dos sprites, sem colidir).
 
-Falta: o conteudo de verdade da comemoracao -- hoje e so um placeholder (o
-jogo congela um instante e volta a jogar, sem imagem nem texto; ver
-`atualiza_jogo` em `src/jogo.s`, estado `jogo_fase = 1`). Tambem faltam
-outras memorias (cenarios) e o retrato final -- que pode virar o conteudo
-real dessa comemoracao quando estiver decidido.
+Sentar reversal: a Amanda que chega andando e convida ELE a sentar do lado
+dela -- ela se alinha em pe primeiro, o dialogo comeca com os dois de pe,
+ela senta sozinha bem antes de falar "vem, senta aqui do meu lado"
+(`PARTE_SENTAR`), e so depois disso o Victor anda ate a cadeira e senta
+tambem (`atualiza_senta`/`atualiza_senta_victor` em `src/jogo.s`). A faixa
+de aproximacao pro aviso "B" comeca na borda da mesa (`PERTO_MIN`), nao
+precisa mais chegar coladinho nele.
+
+Minigame das pizzas caindo, com fluxo completo:
+- **intro** (`jogo_fase = 3`): "PEGUE N PIZZAS!" antes da primeira pizza cair,
+  ate apertar B.
+- **jogando** (`fase = 0`): HUD visual, nao numerico -- barra de `PONTOS_MIN`
+  segmentos e `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que
+  overscan de TV de tubo corta).
+- **vitoria** (`fase = 1`): retrato grande e feliz (mesma tecnica de "zoom"
+  da derrota, sorriso em vez de choro -- ver `RETRATO_FELIZ`) com uma
+  fraseszinha feliz de 4 notas (G3-B3-D4-G4, uma vez so; ver
+  `FELIZ`/`toca_feliz1..4`), pausando o refrao do minigame do mesmo jeito
+  que a derrota pausa. "PARABENS! APERTE B PRA CONTINUAR" -- B leva pra
+  cena do carro (`carrega_carro`), nao volta mais a jogar.
+- **derrota** (`fase = 2`): sprite dela some da tela, so fica um retrato
+  grande e triste (fundo, nao sprite -- "zoom" que o sprite normal nao
+  comporta) com uma fraseszinha triste de 4 notas (B3-G3-E3-D3, uma vez so;
+  ver `TRISTE`/`toca_triste1..4`). B reseta e tenta de novo NA HORA, sem
+  voltar pro menu (perderia o progresso da conversa); START ainda desiste
+  pro menu se ela quiser.
+
+**Cena do carro** (`tela = TELA_CARRO`, banco `BANCO_CARRO`, ver
+`tools/make_carro.py`/`carrega_carro` em `src/jogo.s`): os dois indo pra
+casa depois do encontro. Por enquanto so o visual -- carro branco parado
+na tela (sprite, 20 tiles de lataria + 2 cabecas com paleta propria) com
+ceu de meia-noite estrelado e predios/calcada/rua deslizando atras dele em
+rolagem de hardware continua (loop de 512px sem costura visivel). START
+volta pro menu. Sem musica nessa tela ainda.
+
+## Falta
+
+- **O dialogo da cena do carro.** A conversa em si ainda nao foi escrita
+  (so a Amanda/Victor reais decidem o que vai ali) nem implementada --
+  hoje `atualiza_carro` so checa START. Quando o roteiro estiver pronto,
+  da pra reaproveitar o motor de dialogo que ja existe (mesmo esquema de
+  `FALA`/balao/`passo_dialogo` da cena da pizzaria).
+- Outras memorias/cenarios, se decidirem incluir mais alguma.

@@ -116,10 +116,10 @@ RETRATO_TRISTE = [
     linha(('.',5), ('1',5), ('2',4), ('4',2), ('2',6),
           ('4',2), ('2',4), ('1',5), ('.',15)),                 # lagrima escorrendo
     linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',7), ('1',4), ('2',7),          # boca: centro em
+          ('1',5), ('.',15)),                                   # cima (o resto da
     linha(('.',5), ('1',5), ('2',6), ('1',2), ('2',2),          # boca: cantos
-          ('1',2), ('2',6), ('1',5), ('.',15)),                  # em cima (frown)
-    linha(('.',5), ('1',5), ('2',7), ('1',4), ('2',7),
-          ('1',5), ('.',15)),                                   # boca: centro embaixo
+          ('1',2), ('2',6), ('1',5), ('.',15)),                  # embaixo -- frown de verdade
     linha(('.',5), ('1',6), ('2',16), ('1',6), ('.',15)),      # queixo
     linha(('.',6), ('1',8), ('2',8), ('1',8), ('.',18)),
     linha(('.',48)),
@@ -129,14 +129,41 @@ def cor4_para_palheta():
     """RETRATO_TRISTE usa '4' pra lagrima -- reaproveita o indice 3 (azul)."""
     return {c: c for c in "0123"} | {'4': '3'}
 
-def desenha_retrato_triste(x0, y0):
+# a mesma cabeca, feliz: sem lagrima (o indice 3 da paleta 3 e compartilhado
+# com o retrato triste -- so cabe UMA cor extra, ver make_jogo.py no topo
+# do arquivo -- entao aqui a felicidade e so cabelo+pele, sem cor a mais) e
+# a boca com as pontas em cima, centro embaixo -- um sorriso de verdade.
+RETRATO_FELIZ = [
+    linha(('.',10), ('1',16), ('.',10), ('1',6), ('.',6)),
+    linha(('.',8), ('1',20), ('.',8), ('1',8), ('.',4)),
+    linha(('.',6), ('1',24), ('.',18)),
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),        # testa
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',4), ('1',2), ('2',6),            # sobrancelhas
+          ('1',2), ('2',4), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',3), ('1',3), ('2',6),
+          ('1',3), ('2',3), ('1',5), ('.',15)),                   # olhos
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),         # bochecha (sem lagrima)
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',18), ('1',5), ('.',15)),
+    linha(('.',5), ('1',5), ('2',6), ('1',2), ('2',2),            # boca: cantos em
+          ('1',2), ('2',6), ('1',5), ('.',15)),                    # cima (sorriso)
+    linha(('.',5), ('1',5), ('2',7), ('1',4), ('2',7),
+          ('1',5), ('.',15)),                                     # boca: centro embaixo
+    linha(('.',5), ('1',6), ('2',16), ('1',6), ('.',15)),        # queixo
+    linha(('.',6), ('1',8), ('2',8), ('1',8), ('.',18)),
+    linha(('.',48)),
+]
+
+def desenha_retrato(retrato, x0, y0):
     """x0/y0 em pixels, tem que cair em multiplo de 16 (bloco de atributo).
-    RETRATO_TRISTE tem 48 de largura mas so 16 linhas -- cada linha vira 3,
-    pra ficar 48x48 quadrado (o mesmo "zoom" pixelado grosso que o resto
-    do jogo ja usa)."""
+    O retrato tem 48 de largura mas so 16 linhas -- cada linha vira 3, pra
+    ficar 48x48 quadrado (o mesmo "zoom" pixelado grosso que o resto do
+    jogo ja usa)."""
     assert x0 % 16 == 0 and y0 % 16 == 0, "retrato precisa cair em bloco de atributo"
     troca = cor4_para_palheta()
-    for j, linha_str in enumerate(RETRATO_TRISTE):
+    for j, linha_str in enumerate(retrato):
         for rep in range(3):
             y = y0 + j * 3 + rep
             for i, ch in enumerate(linha_str):
@@ -187,14 +214,15 @@ def desenhar_intro():
 def desenhar_vitoria():
     novo_canvas()
     fundo_comum("PIZZA CREK")
-    texto_centro("PARABENS!", 100, 3)
-    texto_centro("ELA ADOROU AS PIZZAS", 116, 3)
+    desenha_retrato(RETRATO_FELIZ, 96, 48)
+    texto_centro("PARABENS!", 120, 3)
+    texto_centro("APERTE B PRA CONTINUAR", 138, 3)
     return capturar()
 
 def desenhar_derrota():
     novo_canvas()
     fundo_comum("PIZZA CREK")
-    desenha_retrato_triste(96, 48)
+    desenha_retrato(RETRATO_TRISTE, 96, 48)
     texto_centro("NAO FOI DESSA VEZ", 120, 3)
     texto_centro("APERTE B PRA TENTAR DE NOVO", 138, 3)
     return capturar()
