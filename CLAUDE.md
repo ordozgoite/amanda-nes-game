@@ -174,6 +174,63 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   limite em mente desde o inicio -- nao da pra simplesmente aumentar a
   escala de uma arte ja pronta (o mockup em PIL) sem recontar quantos
   sprites caem em cada linha.
+- **O limite de 8 sprites por linha de varredura e sobre LARGURA, nao
+  altura.** Cada linha de varredura so conta os tiles cuja COLUNA passa por
+  ali -- um sprite empilhado bem alto nao soma nada a mais nas linhas onde
+  nenhum outro sprite daquela coluna esta. Foi assim que o carro pode ficar
+  bem mais alto (8 linhas de tile) sem estourar o limite: a grade inteira
+  ja nasce com no maximo 8 colunas de largura, entao QUALQUER linha
+  individual automaticamente respeita o teto, nao importa quantas linhas
+  de tile existam no total (so o total geral de sprites em tela, 64, e que
+  limita a altura).
+- **Silhueta que nao e um retangulo preenchido precisa de uma tabela de
+  posicao, nao de um loop fixo `col*ALTURA+linha`.** O carro tem canto
+  arredondado (teto) e celula vazia (vao embaixo do parachoque) -- um loop
+  uniforme desenharia sprite em cima de pixel transparente do mesmo jeito,
+  gastando OAM a toa. `make_carro.py` varre a grade inteira, PULA celula
+  100% transparente, e emite tres tabelas paralelas (offset x, offset y,
+  indice do tile, paleta) que `monta_oam_carro` so percorre -- e tambem
+  como retrato (paleta 1 ou 2, uma pra cada personagem) e lataria (paleta
+  0) convivem na MESMA tabela: a paleta e so mais uma coluna por entrada,
+  nao uma camada extra de sprite por cima.
+- **O orcamento de OAM (64 sprites) e da TELA INTEIRA, nao por objeto --
+  e estourar nao avisa, so faz sprite sumir no hardware real.** Ao
+  aumentar os retratos do carro pra mostrar mais detalhe (cabelo, barba,
+  ombro), a grade foi de ~50 pra 68 celulas sem nenhum aviso do
+  `ca65`/`ld65` -- so os testes e a inspecao visual pegariam isso, e olhando
+  so a imagem (que nao simula o limite) nem isso. Baixar de 68 pra <64
+  exigiu cortar uma fileira inteira (o "teto" dedicado, redundante com o
+  cabelo dos dois que ja fecha aquela borda), nao so aparar canto.
+- **Colar dois desenhos de personagem que usam PALETAS ORIGINAIS
+  diferentes (cabeca vs. torso, ou um personagem vs. outro) numa unica
+  celula/paleta nova exige reconferir o que cada indice de cor significava
+  em cada um.** `VICTOR` (paleta cabeca: 1=cabelo,2=pele,3=cinza) e
+  `AMANDA_CABECA` (paleta cabeca: 1=cabelo,2=pele,3=laco-rosa) coincidem
+  nos indices 1/2 mas NAO no 3 -- por isso viraram DUAS paletas novas no
+  carro (uma pra cada), nao uma paleta "de cabeca" generica reaproveitada
+  pros dois como na primeira versao. Tambem por isso o vidro da janela nao
+  pode ser pintado de azul preenchendo a celula antes de carimbar o
+  retrato: aquela celula agora e a paleta do Victor ou da Amanda, sem slot
+  de azul nenhum -- o respiro em volta do retrato fica transparente (o
+  fundo da cena aparece), nao pintado.
+- **Carimbar duas artes lado a lado numa grade onde CADA METADE tem uma
+  paleta diferente exige alinhar o carimbo EXATAMENTE na borda da coluna,
+  nao "por perto".** Um recuo de 2px (achando que ia sobrar um respiro
+  bonito entre os dois retratos) fez o retrato do Victor vazar 2px pra
+  dentro das colunas da paleta da Amanda (saindo com a cor errada ali) e
+  empurrou o retrato dela pra fora da borda direita da grade inteira --
+  index out of range na hora de gerar. Sem sobra: harmonizar arte alinhada
+  a pixel exato quando ela precisa caber num numero fixo de colunas.
+- **Cor "preta" de sprite (`$0F`) sobre fundo TAMBEM preto ($0F) some --
+  mas cinza-escuro ($00) sobre um cinza-claro DIFERENTE tambem some, so que
+  ao contrario.** O trim do carro (roda, parachoque) e preto ($0F) igual a
+  rua, entao ficava invisivel ali -- trocado pra $00 (cinza-escuro) resol-
+  veu contra a rua, mas $00 e EXATAMENTE a cor que a calcada ja usava,
+  entao o teto/pilar do carro (que fica bem na faixa de y da calcada)
+  sumiu ali por sua vez. A calcada teve que subir pra um cinza mais claro
+  ($10) pra abrir distancia dos DOIS lados -- nao basta checar contra um
+  unico vizinho, checar contra TODOS os fundos que aquele elemento pode
+  sobrepor.
 
 ## Estado atual
 
@@ -211,11 +268,26 @@ Minigame das pizzas caindo, com fluxo completo:
 
 **Cena do carro** (`tela = TELA_CARRO`, banco `BANCO_CARRO`, ver
 `tools/make_carro.py`/`carrega_carro` em `src/jogo.s`): os dois indo pra
-casa depois do encontro. Por enquanto so o visual -- carro branco parado
-na tela (sprite, 20 tiles de lataria + 2 cabecas com paleta propria) com
-ceu de meia-noite estrelado e predios/calcada/rua deslizando atras dele em
-rolagem de hardware continua (loop de 512px sem costura visivel). START
-volta pro menu. Sem musica nessa tela ainda.
+casa depois do encontro. Por enquanto so o visual -- carro branco GRANDE
+(64x64px -- largura no teto fisico de 8 sprites/scanline do PPU, ver
+armadilha abaixo) parado na tela (sprite), na faixa de baixo da pista --
+a mais perto da camera, nao na calcada. Os retratos dos dois na janela NAO
+sao um desenho novo -- sao `VICTOR`/`AMANDA_CABECA` (o mesmo sprite deles
+sentados no restaurante, ver `tools/make_sprites.py`) reaproveitados 2x
+maiores (`_scale2x`), cada um com paleta PROPRIA (nao uma paleta generica
+de "cabeca" -- o cinza do colarinho do Victor e o rosa do laco da Amanda
+nao cabem juntos num so slot de 3 cores). O vidro nao e pintado de azul:
+o respiro ao redor de cada retrato fica transparente, deixando o fundo da
+cena (ceu/predio) aparecer, como reflexo de verdade -- pintar seria
+impossivel de qualquer jeito, ja que essas celulas sao a paleta do Victor
+ou da Amanda, sem slot de azul disponivel. Ceu de meia-noite estrelado e
+predios/calcada/rua deslizando atras dele em rolagem de hardware continua
+(loop de 512px sem costura visivel). A silhueta do carro nao e um retangulo
+uniforme (nao tem teto -- o proprio cabelo dos dois ja fecha essa borda --
+e tem vao vazio embaixo do parachoque) -- os sprites vem de uma tabela de
+posicao/tile/paleta gerada por `make_carro.py` e consumida por
+`monta_oam_carro`, nao de um loop fixo (ver armadilha da silhueta
+irregular abaixo). START volta pro menu. Sem musica nessa tela ainda.
 
 ## Falta
 

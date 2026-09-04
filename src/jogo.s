@@ -1216,8 +1216,13 @@ troca_nametable_jogo:
 ;  a rua deslizando atras). A conversa entra num passo futuro; por hora a
 ;  cena so fica em loop ate START (volta pro menu, ver atualiza_carro).
 ; ==========================================================================
-CARRO_X = 100    ; posicao fixa na tela -- o carro e sprite, nao rola com
-CARRO_Y = 150    ; o fundo (e assim que ele parece "parado" enquanto anda)
+; posicao fixa na tela (o carro e sprite, nao rola com o fundo -- e assim
+; que ele parece "parado" enquanto anda). CARRO_X centraliza os 64px de
+; largura (256-64)/2; CARRO_Y poe a roda (base do sprite, perto do fim dos
+; 64px de altura, ver CARRO_PX_H em tools/make_carro.py) na faixa de baixo
+; da pista -- a mais perto da camera.
+CARRO_X = 96
+CARRO_Y = 172
 
 carrega_carro:
     lda #$01
@@ -1244,7 +1249,7 @@ carrega_carro:
     sta ptr
     lda #>chr_sprites_carro
     sta ptr+1
-    lda #2
+    lda #PAGINAS_SPRITES_CARRO
     sta paginas
     jsr copia_ppu
 
@@ -1286,38 +1291,32 @@ carrega_carro:
     jmp liga_tela
 
 ; --------------------------------------------------------------------------
-;  Monta a OAM do carro: 20 sprites pra lataria (5 tiles de largura por 4
-;  de altura, ver CARRO em tools/make_carro.py) mais 2 pras cabecas, que
-;  ficam desenhadas por CIMA do para-brisa (outra paleta -- a mesma
-;  cabelo/pele/laco de sempre). So roda uma vez, na carga da cena: nada
-;  aqui muda quadro a quadro, entao nao precisa redesenhar no laco
-;  principal (o NMI manda a mesma OAM de novo sozinho, todo quadro).
+;  Monta a OAM do carro a partir da tabela gerada por tools/make_carro.py
+;  (carro_ofs_x/y_tab, carro_tile_tab, carro_pal_tab, CARRO_N_SPRITES): a
+;  silhueta tem canto arredondado e celula vazia (teto, vao embaixo), entao
+;  nao e uma grade retangular uniforme -- cada entrada da tabela ja diz
+;  onde (offset x/y) e com qual tile/paleta desenhar aquela celula, tanto
+;  faz se e lataria (paleta 0) ou cabeca (paleta 1). So roda uma vez, na
+;  carga da cena: nada aqui muda quadro a quadro, entao nao precisa
+;  redesenhar no laco principal (o NMI manda a mesma OAM de novo sozinho,
+;  todo quadro).
 ; --------------------------------------------------------------------------
 monta_oam_carro:
     ldx #$00
     ldy #$00
 @loop:
-    txa
-    and #$03                 ; linha do tile (0-3) = indice mod 4
-    asl
-    asl
-    asl                       ; *8
+    lda carro_ofs_y_tab, x
     clc
     adc #CARRO_Y
     sta oam, y
 
-    txa
+    lda carro_tile_tab, x
     sta oam+1, y
 
-    lda #$00                  ; paleta 0 (a lataria)
+    lda carro_pal_tab, x
     sta oam+2, y
 
-    txa
-    lsr
-    lsr                        ; coluna do tile (0-4) = indice / 4
-    asl
-    asl
-    asl                        ; *8
+    lda carro_ofs_x_tab, x
     clc
     adc #CARRO_X
     sta oam+3, y
@@ -1327,23 +1326,8 @@ monta_oam_carro:
     iny
     iny
     inx
-    cpx #20
+    cpx #CARRO_N_SPRITES
     bne @loop
-
-    lda #(CARRO_Y+1)           ; as duas cabecas, sprites 20 e 21
-    sta oam, y
-    sta oam+4, y
-    lda #20                    ; Victor
-    sta oam+1, y
-    lda #21                    ; Amanda
-    sta oam+5, y
-    lda #$01                   ; paleta 1 (as cabecas)
-    sta oam+2, y
-    sta oam+6, y
-    lda #(CARRO_X+16)
-    sta oam+3, y
-    lda #(CARRO_X+24)
-    sta oam+7, y
     rts
 
 ; ---- laco principal da cena do carro: por enquanto so espera START ----

@@ -2,6 +2,7 @@
 """
 Testa o jogo inteiro: menu -> pizzaria -> menu, com o personagem andando.
 """
+import re
 import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels, check, FAILS
@@ -444,19 +445,23 @@ def main():
           f"tela={v.bus.ram[sym['tela']]} banco={v.bus.banco}")
 
     print("\n== 9b. A cena do carro: rolagem e sprites ==")
-    # 20 sprites da lataria (0-19) + 2 cabecas (20, 21) -- todos visiveis,
-    # nenhum escondido (y >= 0xEF)
-    carro_oam = [v.bus.oam[i:i + 4] for i in range(0, 22 * 4, 4)]
-    check("os 22 sprites do carro (lataria + 2 cabecas) estao visiveis",
+    # numero de celulas (lataria + as duas cabecas, ja juntas na mesma
+    # tabela -- ver monta_oam_carro) vem do proprio gerador, pra nao
+    # travar um valor que muda toda vez que a arte do carro mexe
+    n_carro = int(re.search(r"CARRO_N_SPRITES\s*=\s*(\d+)",
+                             open("build/carro.inc").read()).group(1))
+    carro_oam = [v.bus.oam[i:i + 4] for i in range(0, n_carro * 4, 4)]
+    check(f"as {n_carro} celulas do carro (lataria + as duas cabecas) estao visiveis",
           all(s[0] < 0xEF for s in carro_oam),
           [s[0] for s in carro_oam if s[0] >= 0xEF])
     scroll0 = v.bus.ram[sym["carro_scroll"]]
+    x0 = v.bus.oam[3]                        # x da 1a celula da tabela
     for _ in range(30): v.frame()
     scroll1 = v.bus.ram[sym["carro_scroll"]]
     check("o scroll horizontal avanca sozinho (o carro 'anda')",
           scroll1 != scroll0, f"{scroll0} -> {scroll1}")
     check("mas o sprite do carro fica parado na tela (so o fundo rola)",
-          v.bus.oam[3] == 100, f"x={v.bus.oam[3]}")   # CARRO_X, ver src/jogo.s
+          v.bus.oam[3] == x0, f"{x0} -> {v.bus.oam[3]}")
     v.frame(BTN_START)
     for _ in range(6): v.frame()
     check("START na cena do carro volta pro menu (escape hatch de sempre)",
