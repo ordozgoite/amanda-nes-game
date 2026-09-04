@@ -282,9 +282,15 @@ cena (ceu/predio) aparecer, como reflexo de verdade -- pintar seria
 impossivel de qualquer jeito, ja que essas celulas sao a paleta do Victor
 ou da Amanda, sem slot de azul disponivel. Ceu de meia-noite estrelado e
 predios/calcada/rua deslizando atras dele em rolagem de hardware continua
-(loop de 512px sem costura visivel). A silhueta do carro nao e um retangulo
-uniforme (nao tem teto -- o proprio cabelo dos dois ja fecha essa borda --
-e tem vao vazio embaixo do parachoque) -- os sprites vem de uma tabela de
+(loop de 512px sem costura visivel). Tem teto (branco, mesma cor da
+carroceria -- fileira PROPRIA de sprites, nao da pra economizar aqui
+aproveitando a celula do retrato: aquela celula e a paleta do Victor ou
+da Amanda, sem branco disponivel). A largura (64px = 8 sprites) ja esta
+no teto FISICO do PPU -- 8 sprites e o maximo que uma linha de varredura
+do NES desenha, e a carroceria/janela ja usam as 8 colunas inteiras; nao
+da pra alargar mais sem sprite sumindo no hardware de verdade (ver
+armadilha abaixo). A silhueta nao e um retangulo uniforme (celula vazia
+no vao embaixo do parachoque) -- os sprites vem de uma tabela de
 posicao/tile/paleta gerada por `make_carro.py` e consumida por
 `monta_oam_carro`, nao de um loop fixo (ver armadilha da silhueta
 irregular abaixo). START volta pro menu. Sem musica nessa tela ainda.

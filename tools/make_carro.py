@@ -198,14 +198,20 @@ def _amanda_retrato():
     return _scale2x(AMANDA_CABECA[0:13] + ombros)
 
 def _desenhar_carro():
-    # SEM teto separado -- o proprio cabelo dos dois (ja preto, ja
-    # encostado no topo do retrato) faz esse papel; uma linha a mais so
-    # pra "teto" custaria uma fileira inteira de sprites (8 celulas) por
-    # nada, e o orcamento total de OAM do NES e 64 sprites NA TELA
-    # INTEIRA -- passar disso nao e feio, e sprite sumindo mesmo (o
-    # excedente nao aparece no hardware real).
-    #
-    # janela (tile-linhas 0-3, y0-31): SEM preencher de azul primeiro -- o
+    # teto (tile-linha 0, y0-7): branco, a mesma cor da carroceria -- nao
+    # da pra encaixar isso na propria celula do retrato (aquelas celulas
+    # sao a paleta do Victor ou da Amanda, sem branco disponivel), entao e
+    # uma fileira PROPRIA, gastando orcamento de OAM de verdade. Pra
+    # sobrar (o teto do NES inteiro e 64 sprites NA TELA, nao por objeto),
+    # a carroceria encolheu de 4 pra 3 linhas de tile (ver mais abaixo) --
+    # os retratos ficam do jeito que estavam, ninguem mexeu neles.
+    _fill(0, 0, 64, 8, '2')
+    for i in range(3):                     # corta canto -- arredonda o teto
+        for j in range(3 - i):
+            _carro_px[i][j] = '.'
+            _carro_px[i][63 - j] = '.'
+
+    # janela (tile-linhas 1-4, y8-39): SEM preencher de azul primeiro -- o
     # respiro ao redor de cada retrato fica transparente (pixel 0, nao
     # pintado), entao o que aparece ali e o proprio fundo da cena (ceu/
     # predio) atras do carro, como se fosse o vidro de verdade refletindo
@@ -219,19 +225,20 @@ def _desenhar_carro():
     # x32-63) -- nao pode invadir a coluna vizinha, que e de uma paleta
     # DIFERENTE (ver PAL_CEL logo abaixo); um pixel a mais de qualquer
     # lado rendeia com a cor errada (ou, pra Amanda, sai fora da grade)
-    _stamp(0, 0, victor)                   # metade esquerda da janela
-    _stamp(32, 0, amanda)                  # metade direita
-    for r in range(0, 4):
+    _stamp(0, 8, victor)                   # metade esquerda da janela
+    _stamp(32, 8, amanda)                  # metade direita
+    for r in range(1, 5):
         for c in range(0, 4):
             PAL_CEL[r][c] = 1              # Victor
         for c in range(4, 8):
             PAL_CEL[r][c] = 2              # Amanda
 
-    # carroceria (tile-linhas 4-7, y32-63, todas as 8 colunas)
-    _fill(0, 32, 64, 18, '2')              # branco
-    _fill(31, 34, 2, 14, '1')              # friso da porta
-    _fill(0, 50, 64, 4, '1')               # parachoque
-    _fill(0, 54, 64, 10, '.')              # vao embaixo (chao) ate a base do sprite
+    # carroceria (tile-linhas 5-7, y40-63, todas as 8 colunas) -- 3
+    # linhas, nao 4: o teto acima tomou o lugar que uma 4a linha ocuparia
+    _fill(0, 40, 64, 10, '2')              # branco
+    _fill(31, 41, 2, 8, '1')               # friso da porta
+    _fill(0, 50, 64, 3, '1')               # parachoque
+    _fill(0, 53, 64, 11, '.')              # vao embaixo (chao) ate a base do sprite
 
     def _roda(x0, y0):
         _fill(x0, y0, 14, 14, '1')
@@ -239,8 +246,8 @@ def _desenhar_carro():
             for j in range(2 - i):
                 for dy, dx in ((i, j), (i, 13 - j), (13 - i, j), (13 - i, 13 - j)):
                     _carro_px[y0 + dy][x0 + dx] = '.'
-    _roda(8, 48)                           # roda esquerda -- topo (y48) fica sob o
-    _roda(42, 48)                          # parachoque, so o pneu "aparece" embaixo
+    _roda(8, 44)                           # roda esquerda -- topo (y44) fica sob o
+    _roda(42, 44)                          # parachoque, so o pneu "aparece" embaixo
 
 def main():
     desenhar()
