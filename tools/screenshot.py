@@ -44,13 +44,18 @@ def render(nes, chr_data=None, scale=3):
     px = img.load()
 
     # rolagem horizontal (cena do carro -- ver PPUCTRL bit0 + PPUSCROLL em
-    # src/jogo.s): pra tela parada (scroll_x=0, bit0=0) isso cai exatamente
-    # no comportamento de sempre, entao nao precisa de um caminho separado.
-    base_nt = nes.bus.ppu_ctrl & 1
-    total_scroll = base_nt * 256 + nes.bus.scroll_x   # 0-511
+    # src/jogo.s), LINHA A LINHA: o emulador anota cada troca feita no meio
+    # do ultimo quadro (a divisao de tela do carro: ceu parado em cima, rua
+    # rolando embaixo). Pra tela parada isso cai exatamente no
+    # comportamento de sempre, entao nao precisa de um caminho separado.
+    trocas = nes.bus.linhas_scroll
 
     tile_cache = {}
     for sy in range(240):
+        for linha, sx, nt in trocas:        # em ordem: vale a ultima ja comecada
+            if linha <= sy:
+                sx0, nt0 = sx, nt
+        total_scroll = nt0 * 256 + sx0
         ty = sy // 8
         row = sy % 8
         for sx in range(256):

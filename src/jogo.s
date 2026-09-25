@@ -249,6 +249,8 @@ pz_ativa:    .res 3
 ; ficar suave mesmo sem nada rodando no laco principal.
 carro_scroll: .res 1
 carro_nt:     .res 1
+carro_fase:   .res 1        ; 0 esperando a conversa, 1 conversando, 2 acabou (B segue)
+carro_espera: .res 1
 
 ; --- as fotos (polaroides sepia, ver tools/make_foto.py) ---
 foto_atual:   .res 1        ; indice em foto_*_tab, 0..FOTOS_N-1
@@ -1234,6 +1236,11 @@ troca_nametable_jogo:
 ; da calcada, sem pisar nela.
 CARRO_X = 96
 CARRO_Y = 189
+; a conversa comeca sozinha depois de um respiro, com o carro ja andando;
+; a caixa fica no ceu parado do alto da tela (linhas 2-7, ver
+; divide_tela_carro), acima da estrela do sprite 0 (SPR0_Y, linha 12)
+CARRO_ESPERA_FALA = 90
+CAIXA_CARRO_ROW   = 2
 
 carrega_carro:
     lda #$01
@@ -1295,6 +1302,10 @@ carrega_carro:
     lda #$00
     sta carro_scroll
     sta carro_nt
+    sta carro_fase
+    sta dialogo
+    lda #CARRO_ESPERA_FALA
+    sta carro_espera
 
     lda #TELA_CARRO
     sta tela
@@ -1314,8 +1325,17 @@ carrega_carro:
 ;  todo quadro).
 ; --------------------------------------------------------------------------
 monta_oam_carro:
+    lda #SPR0_Y-1             ; o sprite 0 primeiro: o pixel dele em cima da
+    sta oam                   ; estrela que marca a divisao da tela (a OAM
+    lda #SPR0_TILE            ; guarda Y-1: o PPU desenha uma linha abaixo)
+    sta oam+1
+    lda #$00
+    sta oam+2
+    lda #SPR0_X
+    sta oam+3
+
     ldx #$00
-    ldy #$00
+    ldy #$04                  ; o carro a partir do sprite 1
 @loop:
     lda carro_ofs_y_tab, x
     clc
@@ -1342,19 +1362,134 @@ monta_oam_carro:
     bne @loop
     rts
 
-; ---- laco principal da cena do carro: B segue pras fotos, START desiste ----
+; ---- laco principal da cena do carro ----
+; A conversa abre sozinha depois de CARRO_ESPERA_FALA quadros; B fecha cada
+; caixa depois que o texto termina (como na pizzaria). So quando a conversa
+; acabou e que B segue pras fotos -- antes disso, um B apressado no comeco
+; pularia a conversa inteira. START desiste pro menu a qualquer momento.
 atualiza_carro:
     lda botoes_novos
     and #BTN_START
-    beq :+
-    jmp carrega_menu
-:   lda botoes_novos
+    beq @sem_start
+    lda #$00                  ; o menu nao sabe nada da conversa do carro:
+    sta dialogo               ; sem isso o NMI da proxima tela acharia uma
+    jmp carrega_menu          ; caixa "aberta" que nao existe
+@sem_start:
+    lda carro_fase
+    beq @esperando
+    cmp #$01
+    beq @conversando
+    lda botoes_novos          ; fase 2: a conversa acabou
     and #BTN_B
     beq @fim
     lda #$00
     sta foto_atual
     jmp carrega_foto
+
+@esperando:
+    dec carro_espera
+    bne @fim
+    lda #$01
+    sta carro_fase
+    ldx #PARTE_CARRO_INI
+    stx dlg_parte
+    lda falante_tab, x
+    clc
+    adc #$02                  ; as caixas do carro sao a 2 (Victor) e 3 (Amanda)
+    sta dlg_box
+    lda #$00
+    sta dlg_lin
+    lda #$01                  ; por ultimo: e so ver dialogo != 0 que o NMI
+    sta dialogo               ; comeca a desenhar
 @fim:
+    rts
+
+@conversando:
+    lda dialogo
+    cmp #$03                  ; texto todo na tela, esperando o B?
+    bne @fim
+    lda botoes_novos
+    and #BTN_B
+    beq @fim
+    lda #$00
+    sta dlg_lin
+    lda #$04                  ; comeca a fechar
+    sta dialogo
+    rts
+
+; --------------------------------------------------------------------------
+;  O balao do carro, no NMI. Mesmas pecas do balao da pizzaria
+;  (desenha_linha, escreve_letra, desenha_nome, restaura_linha -- as
+;  tabelas por caixa tem as entradas 2 e 3 pro carro), mas outra maquina de
+;  estado: a da pizzaria tem regras dela (o convite pra sentar, o salto pro
+;  minigame no fim) que nao existem aqui. Sem atributo pra mexer: a caixa
+;  usa a paleta 0 do ceu (ver PALETAS em make_carro.py).
+; --------------------------------------------------------------------------
+passo_dialogo_carro:
+    lda dialogo
+    cmp #$01
+    beq @abrindo
+    cmp #$02
+    beq @escrevendo
+    cmp #$04
+    beq @fechando
+    rts
+
+@abrindo:
+    jsr desenha_linha
+    inc dlg_lin
+    lda dlg_lin
+    cmp #CAIXA_CARRO_LINHAS
+    bcc @fim
+    lda #$02
+    sta dialogo
+    jsr desenha_nome
+    ldx dlg_parte
+    lda inicio_fala_tab, x
+    sta dlg_txt
+    lda #$00
+    sta dlg_col
+    sta dlg_wait
+@fim:
+    rts
+
+@escrevendo:
+    dec dlg_wait
+    bpl @cala
+    lda #$02                  ; uma letra a cada 3 quadros, como na pizzaria
+    sta dlg_wait
+    jmp escreve_letra
+@cala:
+    lda #$10
+    sta $400C
+    rts
+
+@fechando:
+    jsr restaura_linha
+    inc dlg_lin
+    lda dlg_lin
+    cmp #CAIXA_CARRO_LINHAS
+    bcc @fim
+    inc dlg_parte
+    ldx dlg_parte
+    cpx #N_PARTES_TOTAL
+    bcs @acabou
+    lda falante_tab, x
+    clc
+    adc #$02
+    sta dlg_box
+    lda #$00
+    sta dlg_lin
+    lda #$01
+    sta dialogo
+    rts
+@acabou:
+    lda #$00
+    sta dialogo
+    sta dlg_parte              ; a pizzaria tambem zera isso ao comecar, mas
+    sta dlg_box                ; nao custa deixar como ela espera encontrar
+    lda #$02
+    sta carro_fase
     rts
 
 ; ==========================================================================
@@ -1691,14 +1826,15 @@ passo_dialogo:
     sta abre_jogo
     rts
 
-; ---- uma linha da moldura (dlg_lin = 0 topo, 7 base, resto meio) ----
+; ---- uma linha da moldura (dlg_lin = 0 topo, ultima = base, resto meio) ----
 desenha_linha:
     ldx #$01
+    ldy dlg_box
     lda dlg_lin
     bne :+
     ldx #$00                ; linha de cima
     beq :++
-:   cmp #$07
+:   cmp caixa_ult_tab, y    ; a do carro e mais baixa que a da pizzaria
     bne :+
     ldx #$02                ; linha de baixo
 :   stx dlg_tipo
@@ -1793,7 +1929,8 @@ escreve_letra:
 ; ---- escreve o nome de quem fala, de uma vez (nao letra a letra) ----
 desenha_nome:
     lda dlg_box
-    bne @amanda
+    and #$01                ; caixas pares = Victor, impares = Amanda (0/1
+    bne @amanda             ; na pizzaria, 2/3 no carro)
     lda #<nome_victor
     sta ptr
     lda #>nome_victor
@@ -2495,23 +2632,57 @@ liga_tela:
     rts
 
 ; --------------------------------------------------------------------------
-;  Rolagem horizontal da cena do carro -- roda todo NMI (ver nmi). Escreve
-;  o proprio PPUSCROLL/PPUCTRL (por isso pula o @scroll generico de 0,0) e
-;  incrementa carro_scroll: quando ele da a volta em 256, alterna
+;  Rolagem horizontal da cena do carro, com a tela dividida: o NMI deixa
+;  o topo em (0,0) -- o ceu parado, onde fica a caixa de fala -- e esta
+;  rotina, chamada no fim do NMI, espera o PPU chegar na estrela do
+;  sprite 0 (SPR0_Y) e so ENTAO troca a rolagem pro resto do quadro. Um
+;  PPUSCROLL/PPUCTRL escrito no meio do quadro so mexe na parte horizontal
+;  (a vertical so vale no quadro seguinte) -- exatamente o que precisa.
+;
+;  Duas esperas, as duas com limite: primeiro o hit do quadro ANTERIOR
+;  apagar (ele so apaga no fim do vblank), depois o deste acender. Sem o
+;  limite, um sprite 0 que nao encosta em nada (tela apagada, OAM mexida)
+;  travaria o NMI pra sempre -- e o proximo NMI entraria por cima deste.
+;
+;  Depois incrementa carro_scroll: quando ele da a volta em 256, alterna
 ;  carro_nt -- e assim que os 512px das duas nametables coladas (ver
 ;  make_carro.py) viram um scroll continuo de 0 a 511 que da a volta
 ;  sozinho, sem custura, porque o desenho e periodico nesse tamanho.
 ; --------------------------------------------------------------------------
-atualiza_scroll_carro:
+SPR0_LIMITE = 12            ; x 256 voltas de ~11 ciclos = pouco mais de 1 quadro
+
+divide_tela_carro:
+    ldx #$00
+    ldy #SPR0_LIMITE
+@apaga:
+    bit PPUSTATUS
+    bvc @acende_ini
+    dex
+    bne @apaga
+    dey
+    bne @apaga
+    beq @anda                 ; nunca apagou: desiste da divisao neste quadro
+@acende_ini:
+    ldx #$00
+    ldy #SPR0_LIMITE
+@acende:
+    bit PPUSTATUS
+    bvs @divide
+    dex
+    bne @acende
+    dey
+    bne @acende
+    beq @anda                 ; nunca acendeu: idem
+@divide:
     lda carro_scroll
     sta PPUSCROLL
     lda #$00
-    sta PPUSCROLL             ; sem scroll vertical
-
+    sta PPUSCROLL             ; ignorado no meio do quadro, mas fecha o latch
     lda #%10010000            ; os mesmos bits fixos de liga_tela...
     ora carro_nt                ; ...mais qual nametable esta na base
     sta PPUCTRL
 
+@anda:
     inc carro_scroll           ; anda 1px por quadro -- de proposito devagar,
     bne @fim                    ; um passeio, nao uma corrida
     lda carro_nt
@@ -2583,8 +2754,16 @@ nmi:
     jsr passo_dialogo
     jmp @scroll
 @carro:
-    jsr atualiza_scroll_carro   ; escreve o proprio PPUSCROLL/PPUCTRL --
-    jmp @so_musica               ; pula o @scroll generico (0,0) abaixo
+    jsr passo_dialogo_carro
+    lda #%10010000             ; o topo parado: nametable 0, rolagem (0,0) --
+    sta PPUCTRL                ; a divisao do meio do quadro anterior deixou
+    lda #$00                   ; outra nametable aqui
+    sta PPUSCROLL
+    sta PPUSCROLL
+    jsr musica_tick
+    inc nmi_flag
+    jsr divide_tela_carro      ; por ultimo: fica esperando o PPU descer
+    jmp @sai                   ; ate a estrela do sprite 0
 
 @scroll:
     lda #$00
@@ -2595,6 +2774,7 @@ nmi:
     jsr musica_tick
     inc nmi_flag
 
+@sai:
     pla
     tay
     pla
@@ -2964,14 +3144,26 @@ borda_dir:   .byte TILE_BORDA+2, TILE_BORDA+4, TILE_BORDA+7
 ; + coluna, ou o bloco de atributo correspondente) feita pra cada coluna.
 ; inicio_fala_tab/fim_fala_tab/falante_tab (por PARTE do dialogo, nao por
 ; caixa) vem geradas em dialogo.inc.
-boxrow_tab:      .byte CAIXA_ROW, CAIXA_ROW
-caixa_pag_tab:   .byte $21, $21                          ; byte alto -- so a LINHA muda
+;
+; [2] e [3] sao as mesmas duas caixas na cena do carro: mais baixas
+; (CAIXA_CARRO_LINHAS), no ceu parado (CAIXA_CARRO_ROW = linha 2, pagina
+; $20), restauradas da metade esquerda do loop (nam_carro0), que e a que
+; fica em $2000.
+CARRO_BAIXO = (CAIXA_CARRO_ROW*32) & $FF
+boxrow_tab:      .byte CAIXA_ROW, CAIXA_ROW, CAIXA_CARRO_ROW, CAIXA_CARRO_ROW
+caixa_ult_tab:   .byte 7, 7, CAIXA_CARRO_LINHAS-1, CAIXA_CARRO_LINHAS-1
+caixa_pag_tab:   .byte $21, $21, $20, $20                ; byte alto -- so a LINHA muda
                                                            ; a pagina, e ela e igual pros dois
 caixa_baixo_tab: .byte CAIXA_COL_VICTOR, CAIXA_COL_AMANDA          ; linha 0 da caixa
+                 .byte CARRO_BAIXO+CAIXA_COL_VICTOR, CARRO_BAIXO+CAIXA_COL_AMANDA
 nome_baixo_tab:  .byte 32+CAIXA_COL_VICTOR+1, 32+CAIXA_COL_AMANDA+1 ; linha 1 (nome)
+                 .byte CARRO_BAIXO+32+CAIXA_COL_VICTOR+1, CARRO_BAIXO+32+CAIXA_COL_AMANDA+1
 texto_baixo_tab: .byte 64+CAIXA_COL_VICTOR+1, 64+CAIXA_COL_AMANDA+1 ; linha 2 (texto)
+                 .byte CARRO_BAIXO+64+CAIXA_COL_VICTOR+1, CARRO_BAIXO+64+CAIXA_COL_AMANDA+1
 caixacol_lo_tab: .byte <(nam_cena+CAIXA_COL_VICTOR), <(nam_cena+CAIXA_COL_AMANDA)
+                 .byte <(nam_carro0+CAIXA_COL_VICTOR), <(nam_carro0+CAIXA_COL_AMANDA)
 caixacol_hi_tab: .byte >(nam_cena+CAIXA_COL_VICTOR), >(nam_cena+CAIXA_COL_AMANDA)
+                 .byte >(nam_carro0+CAIXA_COL_VICTOR), >(nam_carro0+CAIXA_COL_AMANDA)
 ; endereco de atributo = $23C0 + (linha//4)*8 + (coluna//4) -- CAIXA_ROW=8
 ; cai certinho no limite de um bloco (linha//4 = 2 no topo da caixa, 3 na
 ; base, 4 linhas depois)

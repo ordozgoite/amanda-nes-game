@@ -244,6 +244,26 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   precisam ser agrupados (k-medoides em `make_foto.py`), porque o
   pontilhado quase nunca repete e a foto sozinha passa de 256 tiles.
 
+- **Caixa de fala numa tela que rola precisa de tela dividida.** O balao
+  e escrito na nametable, entao rolaria junto com os predios. No carro, o
+  topo (ceu) fica parado e so o resto rola: o NMI deixa a rolagem em (0,0)
+  e `divide_tela_carro` espera o "sprite 0 hit" -- o sprite 0 e um pixel
+  branco em cima de uma estrela fixa (`SPR0_X/SPR0_Y`, `make_carro.py`) --
+  pra trocar a rolagem no meio do quadro. As duas esperas tem limite de
+  tempo: sem sprite 0 encostando em nada, o NMI travaria pra sempre. O
+  carro, por isso, comeca no sprite 1 da OAM.
+- **O emulador nao tinha "sprite 0 hit" nem rolagem por linha** (mesma
+  licao do `PPUSCROLL`): `nesemu.py` agora calcula o ciclo do hit no comeco
+  de cada quadro e anota em `linhas_scroll` cada troca de rolagem feita no
+  meio dele; `screenshot.py` desenha linha a linha a partir disso. O tempo
+  e aproximado (240 linhas em 20000 ciclos, nao 113,67 por linha como no
+  console) -- serve pra ordem das coisas, nao pra contar ciclo.
+- **A CHR da pizzaria esta cheia (256), a do carro nao.** Os acentos da
+  conversa do carro (Ã, É) so existem la, logo abaixo de `DLG_BASE`
+  (`ACENTOS_CARRO` em `make_scene.py`); o resto da fonte e da moldura usa
+  os MESMOS numeros de tile nas duas cenas, entao o texto gerado serve pras
+  duas sem traducao.
+
 ## Estado atual
 
 Pronto: tela de titulo (em silencio -- START toca um "plin" e leva pra
@@ -296,8 +316,14 @@ deslizando atras dele em rolagem de hardware continua (loop de 512px sem
 costura visivel). A silhueta nao e um retangulo uniforme -- os sprites
 vem de uma tabela de posicao/tile/paleta gerada por `make_carro.py` e
 consumida por `monta_oam_carro`, nao de um loop fixo (ver armadilha da
-silhueta irregular abaixo). START volta pro menu. Sem musica nessa tela
-ainda.
+silhueta irregular abaixo). START volta pro menu. Toca o refrao de
+"Amanda" (que segue pelas fotos).
+
+**Conversa no carro:** depois de `CARRO_ESPERA_FALA` quadros a Amanda
+puxa assunto sozinha (caixa da direita, no ceu parado), B fecha, o Victor
+responde (caixa da esquerda). O texto fica em `GRUPOS_FALA_CARRO`
+(`make_scene.py`), no maximo `CARRO_TEXTO_MAX` linhas por caixa. So depois
+da conversa o B segue pras fotos (antes, um B apressado pularia tudo).
 
 **Fotos** (`tela = TELA_FOTO`, ver `tools/make_foto.py`/`carrega_foto`):
 B no carro abre a primeira; cada foto em `fotos/` vira uma polaroide
@@ -310,11 +336,6 @@ enquanto o minigame ainda usa o mesmo refrao.
 
 ## Falta
 
-- **O dialogo da cena do carro.** A conversa em si ainda nao foi escrita
-  (so a Amanda/Victor reais decidem o que vai ali) nem implementada --
-  hoje `atualiza_carro` so checa START. Quando o roteiro estiver pronto,
-  da pra reaproveitar o motor de dialogo que ja existe (mesmo esquema de
-  `FALA`/balao/`passo_dialogo` da cena da pizzaria).
 - **Mais fotos.** Hoje ha uma so ("NOSSO PRIMEIRO ANO NOVO").
 - **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
   com "FELIZ 2 ANOS DE NAMORO".

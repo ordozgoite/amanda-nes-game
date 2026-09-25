@@ -28,7 +28,7 @@ build/musica.inc: tools/make_song.py
 	@mkdir -p build
 	python3 tools/make_song.py build/musica.inc
 
-build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam build/carro_nt1.nam build/carro.pal build/carro.inc: tools/make_carro.py tools/make_chr.py
+build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam build/carro_nt1.nam build/carro.pal build/carro.inc: tools/make_carro.py tools/make_chr.py tools/make_scene.py
 	@mkdir -p build
 	python3 tools/make_carro.py
 

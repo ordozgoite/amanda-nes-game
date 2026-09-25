@@ -15,13 +15,17 @@ tracejado da rua) tem um periodo que cabe um numero inteiro de vezes em
 """
 import sys
 sys.path.insert(0, "tools")
+from make_scene import tiles_dialogo, tiles_acento_carro
 
 W, H = 512, 240
 NT_TILES_W = 32           # tiles por nametable (256px / 8)
 N_NT = W // (NT_TILES_W * 8)   # 2 nametables
 
 PALETAS = [
-    [0x0F, 0x0F, 0x0F, 0x30],   # 0 ceu preto de meia-noite + estrelas brancas
+    [0x0F, 0x0F, 0x0F, 0x30],   # 0 ceu preto de meia-noite + estrelas brancas --
+                                 # e tambem a caixa de fala (1 = letra preta,
+                                 # 3 = fundo branco, igual glifo_caixa), que
+                                 # cai no ceu: nenhum atributo precisa mudar
     [0x0F, 0x04, 0x05, 0x27],   # 1 predios: 2 tons de roxo escuro + janela acesa (ambar)
     [0x0F, 0x10, 0x0F, 0x27],   # 2 calcada cinza-claro / rua preta / faixa amarela --
                                  # cinza-claro (nao 0x00) pra nao se confundir com o
@@ -44,6 +48,16 @@ def paleta(col, row, cols, rows, p):
             if 0 <= r < H // 16:
                 attr[r][c % (W // 16)] = p
 
+# A tela e dividida em duas: do topo ate SPR0_Y o ceu fica PARADO (e onde
+# a caixa de fala mora -- se ela rolasse com o fundo, ia embora pro lado);
+# dali pra baixo, predios e rua rolam. O ponto da divisao e marcado por
+# uma estrela fixa com o sprite 0 exatamente em cima, da mesma cor: o PPU
+# acende o "sprite 0 hit" quando um pixel opaco do sprite 0 cai num pixel
+# opaco do fundo, e o NMI espera esse sinal pra trocar a rolagem no meio
+# do quadro (ver divide_tela_carro em src/jogo.s). Tem que ficar abaixo da
+# caixa de fala e acima do predio mais alto (y=118).
+SPR0_X, SPR0_Y = 240, 100
+
 _seed = 20260902
 def rnd(n):
     global _seed
@@ -60,6 +74,7 @@ def desenhar():
     for _ in range(70):
         x, y = rnd(W), rnd(150)
         px[y][x] = 3
+    px[SPR0_Y][SPR0_X] = 3        # a estrela do sprite 0 (nametable 0, parada)
 
     # predios: unidade de 64px (8 vezes em 512), alternando os dois tons
     # de roxo pra dar uma nocao de profundidade mesmo sendo uma camada so
@@ -214,9 +229,18 @@ def main():
 
     print(f"tiles unicos (fundo, {N_NT} telas): {len(tiles)} / 256")
 
+    # a caixa de fala usa os MESMOS numeros de tile da pizzaria (fonte,
+    # moldura, nome), mais os acentos que so existem aqui -- assim o texto
+    # convertido em make_scene.py serve pras duas cenas sem traducao
+    dlg = tiles_dialogo()
+    dlg.update(tiles_acento_carro())
+    assert len(tiles) <= min(dlg), f"cenario do carro ({len(tiles)} tiles) invade o dialogo"
     bruto = bytearray()
     for t in tiles:
         bruto += codificar(t)
+    bruto += bytes(16 * (min(dlg) - len(tiles)))
+    for i in range(min(dlg), 256):
+        bruto += dlg[i] if i in dlg else bytes(16)
     paginas = (len(bruto) + 255) // 256
     bruto += bytes(paginas * 256 - len(bruto))
     open("build/chr_carro.bin", "wb").write(bytes(bruto))
@@ -261,7 +285,14 @@ def main():
             carro_tile.append(sprite_indice[tile])
             carro_pal.append(PAL_CEL[r][c])
 
+    # o sprite 0: um pixel so, branco (cor 2 = 0x30, a mesma da estrela),
+    # em cima da estrela SPR0_X/SPR0_Y -- invisivel na pratica
+    spr0 = tuple(tuple(2 if (i, j) == (0, 0) else 0 for i in range(8)) for j in range(8))
+    spr0_tile = len(sprite_tiles)
+    sprite_tiles.append(spr0)
+
     n_sprites = len(carro_ofs_x)
+    assert n_sprites + 1 <= 64, f"carro com {n_sprites} sprites + o sprite 0 estoura a OAM"
     print(f"sprites do carro: {n_sprites} celulas, {len(sprite_tiles)} tiles unicos")
 
     sprites = bytearray()
@@ -309,6 +340,9 @@ def main():
               f"CARRO_N_SPRITES = {n_sprites}",
               f"CARRO_PX_W = {CARRO_PX_W}",
               f"CARRO_PX_H = {CARRO_PX_H}",
+              f"SPR0_X = {SPR0_X}",
+              f"SPR0_Y = {SPR0_Y}",
+              f"SPR0_TILE = {spr0_tile}",
               "",
               tab("carro_ofs_x_tab", carro_ofs_x),
               tab("carro_ofs_y_tab", carro_ofs_y),

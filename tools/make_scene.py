@@ -391,11 +391,14 @@ def tiles_dialogo():
         t[MINI_BASE + n] = glifo_mini(MINI_FONT[ch])
     return t
 
-def para_tiles(texto):
-    """Converte uma linha de texto nos numeros de tile correspondentes."""
+def para_tiles(texto, extra=None):
+    """Converte uma linha de texto nos numeros de tile correspondentes.
+    extra: {caractere: tile} que so existe na CHR de outra cena (ver
+    ACENTOS_CARRO) -- a pizzaria nao tem espaco pra eles."""
     fora = []
     for ch in texto:
-        if ch == " ":   fora.append(DLG_BRANCO)
+        if extra and ch in extra: fora.append(extra[ch])
+        elif ch == " ":   fora.append(DLG_BRANCO)
         elif ch == "!": fora.append(DLG_EXCL)
         elif ch == ",": fora.append(DLG_VIRGULA)
         elif ch == "?": fora.append(DLG_INTERR)
@@ -433,6 +436,30 @@ GRUPOS_FALA = [
 ]
 FALANTE_GRUPO = [falante for falante, _ in GRUPOS_FALA]
 FALA = [linha for _, grupo in GRUPOS_FALA for linha in grupo]
+
+# A conversa no carro, voltando pra casa. Usa o mesmo motor e as mesmas
+# tabelas (as partes vem DEPOIS das da pizzaria, a partir de
+# PARTE_CARRO_INI), mas a caixa e mais baixa: cabe no ceu parado do alto da
+# tela (ver make_carro.py/divide_tela_carro), entao no maximo
+# CARRO_TEXTO_MAX linhas por caixa.
+GRUPOS_FALA_CARRO = [
+    (1, ["NOSSA! TU TEM", "UM PAUZ\xC3O, N\xC9?"]),
+    (0, ["RSRS"]),
+]
+CARRO_TEXTO_MAX = 2
+
+# Ã e É nao cabem na CHR da pizzaria (ja esta nos 256), mas a do carro tem
+# sobra: esses dois tiles so existem la, logo abaixo de DLG_BASE.
+# make_carro.py confere que o cenario do carro nao chega ate eles.
+ACENTOS_CARRO = {"\xC3": DLG_BASE - 2, "\xC9": DLG_BASE - 1}
+ACENTUADAS_CARRO = {
+    "\xC3": [".XX.X", "X..X.", ".XXX.", "X...X", "XXXXX", "X...X", "X...X"],
+    "\xC9": ["...X.", "XXXXX", "X....", "XXXX.", "X....", "X....", "XXXXX"],   # acento de 1 linha:
+                                                                                # com 2 o E vira "e" minusculo
+}
+
+def tiles_acento_carro():
+    return {i: glifo_caixa(ACENTUADAS_CARRO[ch]) for ch, i in ACENTOS_CARRO.items()}
 
 # depois que ESSA parte fecha (o convite "vem, senta aqui do meu lado!"),
 # o assembly anima a Amanda indo se sentar antes de abrir a proxima caixa
@@ -538,12 +565,17 @@ def main():
     # o texto do balao, ja convertido em numeros de tile
     paginas = _paginas
     linhas = ["; gerado por tools/make_scene.py -- nao edite a mao", ""]
-    for n, txt in enumerate(FALA):
+    for _, g in GRUPOS_FALA_CARRO:
+        assert len(g) <= CARRO_TEXTO_MAX, f"caixa do carro com {len(g)} linhas: {g}"
+    todas = [(t, None) for t in FALA] + \
+            [(t, ACENTOS_CARRO) for _, g in GRUPOS_FALA_CARRO for t in g]
+    for n, (txt, extra) in enumerate(todas):
         assert len(txt) <= 14, f"linha {n} tem {len(txt)} chars (max 14)"
-        bs = ", ".join(f"${v:02X}" for v in para_tiles(txt))
-        linhas.append(f"fala{n}:  .byte {bs}, $00   ; {txt}")
-    linhas += ["", "fala_lo:  .byte " + ", ".join(f"<fala{n}" for n in range(len(FALA))),
-               "fala_hi:  .byte " + ", ".join(f">fala{n}" for n in range(len(FALA))), ""]
+        bs = ", ".join(f"${v:02X}" for v in para_tiles(txt, extra))
+        legivel = txt.replace("\xC3", "A~").replace("\xC9", "E'").replace("\xCA", "E^")
+        linhas.append(f"fala{n}:  .byte {bs}, $00   ; {legivel}")
+    linhas += ["", "fala_lo:  .byte " + ", ".join(f"<fala{n}" for n in range(len(todas))),
+               "fala_hi:  .byte " + ", ".join(f">fala{n}" for n in range(len(todas))), ""]
     # a etiqueta com o nome de quem fala, na fonte mini -- aparece inteira
     # de uma vez (nao letra a letra como a fala) quando a caixa abre
     for nome, texto in (("nome_victor", "VICTOR:"), ("nome_amanda", "AMANDA:")):
@@ -553,18 +585,22 @@ def main():
     # cada grupo (caixa) sabe onde comeca e onde termina dentro de FALA, e
     # quem fala nele -- o assembly nunca reconta isso na mao
     inicios, fins, pos = [], [], 0
-    for _, g in GRUPOS_FALA:
+    for _, g in GRUPOS_FALA + GRUPOS_FALA_CARRO:
         inicios.append(pos)
         pos += len(g)
         fins.append(pos)
     linhas += ["inicio_fala_tab: .byte " + ", ".join(str(v) for v in inicios),
                "fim_fala_tab:    .byte " + ", ".join(str(v) for v in fins),
-               "falante_tab:     .byte " + ", ".join(str(v) for v in FALANTE_GRUPO), ""]
+               "falante_tab:     .byte " + ", ".join(
+                   str(v) for v in FALANTE_GRUPO + [f for f, _ in GRUPOS_FALA_CARRO]), ""]
     linhas += [f"; quantas paginas de 256 bytes a CHR da cena ocupa -- o assembly",
                f"; le daqui em vez de ter o numero escrito na mao",
                f"PAGINAS_CENA  = {paginas}",
                f"N_FALAS       = {len(FALA)}",
                f"N_PARTES      = {len(GRUPOS_FALA)}",
+               f"PARTE_CARRO_INI = {len(GRUPOS_FALA)}",
+               f"N_PARTES_TOTAL  = {len(GRUPOS_FALA) + len(GRUPOS_FALA_CARRO)}",
+               f"CAIXA_CARRO_LINHAS = {CARRO_TEXTO_MAX + 4}   ; topo, nome, texto, respiro, base",
                f"PARTE_SENTAR  = {PARTE_SENTAR}",
                f"MESA_Y        = {MESA_Y}",
                f"TILE_BRANCO   = ${DLG_BRANCO:02X}",

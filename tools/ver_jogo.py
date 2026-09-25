@@ -107,7 +107,26 @@ for _ in range(150):               # deixa o cenario rolar um pouco
 render(nes).save("build/jogo-11-carro-andando.png")
 print("build/jogo-11-carro-andando.png  scroll =", nes.bus.ram[sym["carro_scroll"]])
 
-nes.frame(BTN_B)                  # B no carro -> primeira foto
+def ate_ler(nes):
+    """Espera a caixa terminar de escrever (dialogo == 3)."""
+    for _ in range(300):
+        nes.frame()
+        if nes.bus.ram[sym["dialogo"]] == 3:
+            break
+    nes.frame()
+
+ate_ler(nes)                      # a Amanda puxa assunto sozinha
+render(nes).save("build/jogo-11b-carro-amanda.png")
+print("build/jogo-11b-carro-amanda.png")
+nes.frame(BTN_B)
+ate_ler(nes)                      # e o Victor responde
+render(nes).save("build/jogo-11c-carro-victor.png")
+print("build/jogo-11c-carro-victor.png")
+nes.frame(BTN_B)
+for _ in range(12):
+    nes.frame()
+
+nes.frame(BTN_B)                  # conversa acabou: B -> primeira foto
 for _ in range(6):
     nes.frame()
 render(nes).save("build/jogo-12-foto.png")

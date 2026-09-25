@@ -450,24 +450,73 @@ def main():
     # que a arte do carro mexe
     n_carro = int(re.search(r"CARRO_N_SPRITES\s*=\s*(\d+)",
                              open("build/carro.inc").read()).group(1))
-    carro_oam = [v.bus.oam[i:i + 4] for i in range(0, n_carro * 4, 4)]
+    # o carro comeca no sprite 1: o 0 e o marcador da divisao de tela
+    carro_oam = [v.bus.oam[i:i + 4] for i in range(4, 4 + n_carro * 4, 4)]
     check(f"as {n_carro} celulas do carro estao visiveis",
           all(s[0] < 0xEF for s in carro_oam),
           [s[0] for s in carro_oam if s[0] >= 0xEF])
     scroll0 = v.bus.ram[sym["carro_scroll"]]
-    x0 = v.bus.oam[3]                        # x da 1a celula da tabela
+    x0 = v.bus.oam[7]                        # x da 1a celula da tabela
     for _ in range(30): v.frame()
     scroll1 = v.bus.ram[sym["carro_scroll"]]
     check("o scroll horizontal avanca sozinho (o carro 'anda')",
           scroll1 != scroll0, f"{scroll0} -> {scroll1}")
     check("mas o sprite do carro fica parado na tela (so o fundo rola)",
-          v.bus.oam[3] == x0, f"{x0} -> {v.bus.oam[3]}")
+          v.bus.oam[7] == x0, f"{x0} -> {v.bus.oam[7]}")
     check("o carro toca o refrao de \"Amanda\" (a musica da parte final)",
           v.bus.ram[sym["musica_liga"]] == 1)
 
-    print("\n== 9c. As fotos: B no carro abre a primeira polaroide ==")
+    print("\n== 9c. O carro: ceu parado em cima, rua rolando embaixo ==")
+    car_inc = open("build/carro.inc").read()
+    spr0_y = int(re.search(r"SPR0_Y\s*=\s*(\d+)", car_inc).group(1))
+    check("o sprite 0 fica em cima da estrela da divisao",
+          v.bus.oam[0] == spr0_y - 1, f"y={v.bus.oam[0]}")
+    trocas = v.bus.linhas_scroll
+    check("o topo do quadro comeca sem rolagem (ceu parado, nametable 0)",
+          trocas[0][1:] == (0, 0), trocas[:2])
+    meio = [t for t in trocas[1:] if t[1] == (v.bus.ram[sym["carro_scroll"]] - 1) & 0xFF]
+    check("a rolagem troca no meio do quadro, logo abaixo da estrela",
+          meio and spr0_y < meio[0][0] < 118, trocas)
+
+    print("\n== 9d. O carro: a conversa ==")
     # copia do console parado no carro: o 9b continua dali com o START
     fo = v.copia()
+    dlg = open("build/dialogo.inc").read()
+    carro_ini = int(re.search(r"PARTE_CARRO_INI\s*=\s*(\d+)", dlg).group(1))
+    falas = {int(n): [int(b, 16) for b in re.findall(r"\$([0-9A-F]{2})", bs)][:-1]
+             for n, bs in re.findall(r"^fala(\d+):\s*\.byte ([^;]*)", dlg, re.M)}
+    inicios = [int(x) for x in re.search(r"inicio_fala_tab:\s*\.byte ([\d, ]+)", dlg).group(1).split(",")]
+    fo.frame(BTN_B)                          # B apressado, antes da conversa
+    for _ in range(6): fo.frame()
+    check("B antes da conversa nao pula o carro", fo.bus.ram[sym["tela"]] == 3)
+    for _ in range(200):
+        fo.frame()
+        if fo.bus.ram[sym["dialogo"]] == 3:
+            break
+    fo.frame()
+    # Amanda fala primeiro: caixa da direita (coluna 12), linha 2, texto na 4
+    linha1 = list(fo.bus.vram[0x2000 + 4 * 32 + 13: 0x2000 + 4 * 32 + 13 + len(falas[inicios[carro_ini]])])
+    check("a caixa da Amanda abre sozinha, a direita, no ceu parado",
+          fo.bus.ram[sym["dlg_box"]] == 3 and linha1 == falas[inicios[carro_ini]],
+          f"box={fo.bus.ram[sym['dlg_box']]}")
+    fo.frame(BTN_B)
+    for _ in range(200):
+        fo.frame()
+        if fo.bus.ram[sym["dialogo"]] == 3:
+            break
+    fo.frame()
+    resp = falas[inicios[carro_ini + 1]]
+    check("depois do B, o Victor responde na caixa da esquerda (coluna 4)",
+          fo.bus.ram[sym["dlg_box"]] == 2 and
+          list(fo.bus.vram[0x2000 + 4 * 32 + 5: 0x2000 + 4 * 32 + 5 + len(resp)]) == resp)
+    fo.frame(BTN_B)
+    for _ in range(12): fo.frame()
+    nt0 = open("build/carro_nt0.nam", "rb").read()
+    check("a conversa acabou e o ceu voltou ao que era (linhas 2-7)",
+          fo.bus.ram[sym["carro_fase"]] == 2 and fo.bus.ram[sym["dialogo"]] == 0 and
+          bytes(fo.bus.vram[0x2040:0x2100]) == nt0[0x40:0x100])
+
+    print("\n== 9e. As fotos: B no carro abre a primeira polaroide ==")
     inc = open("build/fotos.inc").read()
     n_fotos = int(re.search(r"FOTOS_N\s*=\s*(\d+)", inc).group(1))
     banco1 = int(re.search(r"foto_banco_tab:\s*\.byte\s*(\d+)", inc).group(1))

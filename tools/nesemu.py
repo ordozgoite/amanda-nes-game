@@ -300,6 +300,9 @@ def build_table(c):
 
 # ====================================================================== BUS
 
+CICLOS_VISIVEL = 20000                  # o que frame() roda antes do vblank
+CICLOS_LINHA = CICLOS_VISIVEL / 240
+
 class Bus:
     def __init__(self, rom):
         assert rom[:4] == b"NES\x1a", "nao e um arquivo iNES"
@@ -320,6 +323,15 @@ class Bus:
         self.scroll_x = 0       # os dois bytes que $2005 escreve, na ordem
         self.scroll_y = 0       # (x primeiro) -- so pra telas com rolagem
 
+        # Tempo dentro do quadro, pra divisao de tela da cena do carro: o
+        # jogo espera o "sprite 0 hit" ($2002 bit 6) e troca a rolagem no
+        # meio do quadro. Sem isso aqui, a espera do jogo nunca terminaria
+        # (ou desistiria por tempo), e a captura mostraria uma rolagem so.
+        self.cpu = None             # NES liga; a leitura de $2002 precisa do relogio
+        self.visivel_ini = None     # ciclo em que a parte visivel deste quadro comecou
+        self.hit_ciclo = None       # ciclo em que o sprite 0 encosta no fundo (ou None)
+        self.linhas_scroll = [(0, 0, 0)]   # (linha, scroll_x, nametable) em vigor a partir dali
+
         self.buttons = 0
         self.strobe = False
         self.shift = 0
@@ -329,6 +341,22 @@ class Bus:
 
         self.dma_cycles = 0
 
+    def linha_atual(self):
+        """Linha de varredura sendo desenhada agora, ou None fora da parte visivel."""
+        if self.visivel_ini is None or self.cpu is None:
+            return None
+        d = self.cpu.cycles - self.visivel_ini
+        if 0 <= d < CICLOS_VISIVEL:
+            return int(d / CICLOS_LINHA)
+        return None
+
+    def anota_scroll(self):
+        """Rolagem horizontal escrita no meio do quadro vale a partir da
+        linha seguinte (o PPU so copia a parte horizontal no fim da linha)."""
+        linha = self.linha_atual()
+        if linha is not None:
+            self.linhas_scroll.append((linha + 1, self.scroll_x, self.ppu_ctrl & 1))
+
     # ---- CPU <-> memoria ----
     def read(self, a):
         if a < 0x2000:
@@ -337,6 +365,8 @@ class Bus:
             reg = a & 7
             if reg == 2:
                 v = 0x80 if self.vblank else 0x00
+                if self.hit_ciclo is not None and self.cpu.cycles >= self.hit_ciclo:
+                    v |= 0x40
                 self.vblank = False
                 self.latch = 0
                 return v
@@ -365,11 +395,13 @@ class Bus:
             reg = a & 7
             if reg == 0:
                 self.ppu_ctrl = v
+                self.anota_scroll()
             elif reg == 1:
                 self.ppu_mask = v
             elif reg == 5:
                 if self.latch == 0:
                     self.scroll_x = v
+                    self.anota_scroll()
                 else:
                     self.scroll_y = v
                 self.latch ^= 1
@@ -415,6 +447,7 @@ class NES:
     def __init__(self, path):
         self.bus = Bus(open(path, "rb").read())
         self.cpu = CPU(self.bus)
+        self.bus.cpu = self.cpu
         self.cpu.reset()
         self.frames = 0
 
@@ -425,8 +458,9 @@ class NES:
         original, e a copia continuaria executando no console antigo."""
         novo = NES.__new__(NES)
         novo.frames = self.frames
-        novo.bus = copy.deepcopy(self.bus)
+        novo.bus = copy.deepcopy(self.bus, {id(self.cpu): None})
         novo.cpu = CPU(novo.bus)
+        novo.bus.cpu = novo.cpu
         for k in ("a", "x", "y", "sp", "pc", "c", "z", "i", "d", "v", "n", "cycles"):
             setattr(novo.cpu, k, getattr(self.cpu, k))
         return novo
@@ -443,13 +477,52 @@ class NES:
         self.bus.buttons = buttons
         if self.bus.strobe:
             self.bus.shift = buttons
-        self.run_cycles(20000)          # parte visivel
+        b = self.bus
+        b.visivel_ini = self.cpu.cycles
+        b.linhas_scroll = [(0, b.scroll_x, b.ppu_ctrl & 1)]
+        b.hit_ciclo = self.sprite0_hit()
+        self.run_cycles(CICLOS_VISIVEL)  # parte visivel
         self.bus.vblank = True
         if self.bus.ppu_ctrl & 0x80:
             self.cpu.nmi()
         self.run_cycles(2200)           # vblank
         self.bus.vblank = False
         self.frames += 1
+
+    def sprite0_hit(self):
+        """Ciclo do primeiro pixel opaco do sprite 0 sobre pixel opaco do
+        fundo, com a rolagem do comeco do quadro -- ou None. Mesmas regras
+        do PPU: fundo e sprites ligados, sprite 8x8, nunca na coluna 255."""
+        b = self.bus
+        if b.ppu_mask & 0x18 != 0x18:
+            return None
+        y, tile, attr, x = b.oam[0:4]
+        if y >= 0xEF:
+            return None
+        spr = (b.ppu_ctrl & 0x08) << 9
+        fundo = (b.ppu_ctrl & 0x10) << 8
+        base = (b.ppu_ctrl & 1) * 256 + b.scroll_x
+        for r in range(8):
+            sy = y + 1 + r
+            if sy >= 240:
+                break
+            rr = 7 - r if attr & 0x80 else r
+            lo, hi = b.vram[spr + tile * 16 + rr], b.vram[spr + tile * 16 + rr + 8]
+            for c in range(8):
+                sx = x + c
+                if sx >= 255:
+                    break
+                bit = c if attr & 0x40 else 7 - c
+                if not ((lo >> bit) & 1 or (hi >> bit) & 1):
+                    continue
+                src = (base + sx) % 512
+                nt = 0x2000 if src < 256 else 0x2400
+                t = b.vram[nt + (sy // 8) * 32 + (src % 256) // 8]
+                a = fundo + t * 16 + sy % 8
+                bb = 7 - src % 8
+                if (b.vram[a] >> bb) & 1 or (b.vram[a + 8] >> bb) & 1:
+                    return b.visivel_ini + int((sy + sx / 256) * CICLOS_LINHA)
+        return None
 
     # ---- ajudantes de leitura ----
     def nt_text(self, addr, length):
