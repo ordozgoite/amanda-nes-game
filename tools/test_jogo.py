@@ -539,9 +539,14 @@ def main():
           all(fo.bus.oam[i] >= 0xEF for i in range(0, 256, 4)))
     check("a musica continua ligada na troca pra foto",
           fo.bus.ram[sym["musica_liga"]] == 1)
-    for _ in range(n_fotos):
+    for n in range(2, n_fotos + 1):
         fo.frame(BTN_B)
         for _ in range(6): fo.frame()
+        check(f"B leva pra foto {n}, com a nametable dela",
+              fo.bus.ram[sym["tela"]] == 4 and
+              bytes(fo.bus.vram[0x2000:0x2400]) == open(f"build/foto{n}.nam", "rb").read())
+    fo.frame(BTN_B)
+    for _ in range(6): fo.frame()
     check(f"B depois da ultima foto ({n_fotos}) volta pro menu (por enquanto)",
           fo.bus.ram[sym["tela"]] == 0, f"tela={fo.bus.ram[sym['tela']]}")
     v.frame(BTN_START)

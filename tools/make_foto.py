@@ -34,6 +34,8 @@ from PIL import Image, ImageEnhance, ImageOps
 FOTOS = [
     dict(arquivo="fotos/01-mesa.jpg", recorte=(60, 430, 1080, 1172),
          legenda="NOSSO PRIMEIRO ANO NOVO"),
+    dict(arquivo="fotos/02-loja.jpg", recorte=(425, 116, 1584, 959),
+         legenda="MINHA COMPANHEIRA DE LOJA"),
 ]
 
 # sepia: 0 preto (fundo da tela e sombra da foto), 1 marrom, 2 ambar, 3 creme
@@ -87,11 +89,13 @@ def reduz(pads, alvos, limite):
     cent = random.sample(cands, limite)
     for _ in range(10):
         atrib = [min(range(limite), key=lambda k: custo(i, cent[k])) for i in range(len(pads))]
+        # grupo vazio desperdica tile: vira o tile hoje mais mal representado
+        erro = sorted(range(len(pads)), key=lambda i: -custo(i, cent[atrib[i]]))
         novo = []
         for k in range(limite):
             m = [i for i in range(len(pads)) if atrib[i] == k]
             if not m:
-                novo.append(cent[k])
+                novo.append(pads[erro.pop(0)])
                 continue
             opcoes = {pads[i] for i in m} | {cent[k]}
             novo.append(min(opcoes, key=lambda p: sum(custo(i, p) for i in m)))

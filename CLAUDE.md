@@ -336,7 +336,8 @@ enquanto o minigame ainda usa o mesmo refrao.
 
 ## Falta
 
-- **Mais fotos.** Hoje ha uma so ("NOSSO PRIMEIRO ANO NOVO").
+- **Mais fotos, se quiserem.** Hoje sao duas ("NOSSO PRIMEIRO ANO NOVO",
+  "MINHA COMPANHEIRA DE LOJA").
 - **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
   com "FELIZ 2 ANOS DE NAMORO".
 - **Musica nova pro minigame** (o refrao passa a ser so da parte final).
