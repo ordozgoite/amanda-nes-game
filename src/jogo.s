@@ -28,6 +28,7 @@ TELA_MENU = 0
 TELA_CENA = 1
 TELA_JOGO = 2
 TELA_CARRO = 3
+TELA_FOTO = 4
 
 ; ---- botoes, na ordem em que o controle os entrega ----
 BTN_A     = $80
@@ -249,6 +250,9 @@ pz_ativa:    .res 3
 carro_scroll: .res 1
 carro_nt:     .res 1
 
+; --- as fotos (polaroides sepia, ver tools/make_foto.py) ---
+foto_atual:   .res 1        ; indice em foto_*_tab, 0..FOTOS_N-1
+
 ; --- musica ---
 musica_liga: .res 1         ; 0 = motor desligado (menu, em silencio)
 ch_ptr_lo:   .res 3
@@ -365,7 +369,12 @@ principal:
     beq @cena
     cmp #TELA_JOGO
     beq @jogo
+    cmp #TELA_FOTO
+    beq @foto
     jsr atualiza_carro
+    jmp principal
+@foto:
+    jsr atualiza_foto
     jmp principal
 @jogo:
     jsr atualiza_jogo
@@ -1219,10 +1228,12 @@ troca_nametable_jogo:
 ; posicao fixa na tela (o carro e sprite, nao rola com o fundo -- e assim
 ; que ele parece "parado" enquanto anda). CARRO_X centraliza os 64px de
 ; largura (256-64)/2; CARRO_Y poe a roda (base do sprite, perto do fim dos
-; 64px de altura, ver CARRO_PX_H em tools/make_carro.py) na faixa de baixo
-; da pista -- a mais perto da camera.
+; 48px de altura, ver CARRO_PX_H em tools/make_carro.py) na faixa de baixo
+; da pista -- a mais perto da camera. Carro bem mais baixo que as versoes
+; anteriores (perfil lateral, nao mais de frente) -- cabe inteiro depois
+; da calcada, sem pisar nela.
 CARRO_X = 96
-CARRO_Y = 172
+CARRO_Y = 189
 
 carrega_carro:
     lda #$01
@@ -1232,7 +1243,8 @@ carrega_carro:
     lda #BANCO_CARRO
     jsr troca_banco
 
-    jsr musica_para          ; sem musica nessa cena por enquanto (so o visual)
+    lda #$01                 ; o refrao de "Amanda" recomeca do inicio e segue
+    jsr troca_musica         ; ate o fim do jogo (as fotos nao trocam a musica)
 
     bit PPUSTATUS            ; ceu/predios/rua -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -1330,11 +1342,86 @@ monta_oam_carro:
     bne @loop
     rts
 
-; ---- laco principal da cena do carro: por enquanto so espera START ----
+; ---- laco principal da cena do carro: B segue pras fotos, START desiste ----
 atualiza_carro:
     lda botoes_novos
     and #BTN_START
+    beq :+
+    jmp carrega_menu
+:   lda botoes_novos
+    and #BTN_B
     beq @fim
+    lda #$00
+    sta foto_atual
+    jmp carrega_foto
+@fim:
+    rts
+
+; ==========================================================================
+;  Tela: as fotos -- uma polaroide sepia por vez (ver tools/make_foto.py).
+;  Cada foto traz os proprios 256 tiles e mora num banco que o gerador
+;  escolheu (foto_banco_tab), entao carregar e so seguir as tabelas. A
+;  musica NAO muda aqui: o refrao que comecou no carro continua tocando.
+; ==========================================================================
+carrega_foto:
+    lda #$01
+    sta carregando
+    jsr desliga_tela
+
+    ldx foto_atual
+    lda foto_banco_tab, x
+    jsr troca_banco          ; estraga X (ver troca_banco)
+
+    bit PPUSTATUS            ; a foto -> pattern table 1 (fundo)
+    PPU_ADDR $1000
+    ldx foto_atual
+    lda foto_chr_lo, x
+    sta ptr
+    lda foto_chr_hi, x
+    sta ptr+1
+    lda foto_pag_tab, x
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $2000
+    ldx foto_atual
+    lda foto_nam_lo, x
+    sta ptr
+    lda foto_nam_hi, x
+    sta ptr+1
+    lda #4
+    sta paginas
+    jsr copia_ppu
+
+    lda #<paletas_foto
+    sta ptr
+    lda #>paletas_foto
+    sta ptr+1
+    jsr carrega_paletas
+
+    jsr esconde_sprites      ; sem sprites -- sobrava o carro na OAM
+
+    lda #TELA_FOTO
+    sta tela
+    lda #$00
+    sta carregando
+    jmp liga_tela
+
+; ---- B passa pra proxima foto; depois da ultima, volta pro menu (por
+; enquanto -- a cena final com o Hulk entra aqui) ----
+atualiza_foto:
+    lda botoes_novos
+    and #BTN_START
+    bne @menu
+    lda botoes_novos
+    and #BTN_B
+    beq @fim
+    inc foto_atual
+    lda foto_atual
+    cmp #FOTOS_N
+    bcs @menu
+    jmp carrega_foto
+@menu:
     jmp carrega_menu
 @fim:
     rts
@@ -2484,6 +2571,8 @@ nmi:
     beq @cena
     cmp #TELA_CARRO
     beq @carro
+    cmp #TELA_FOTO
+    beq @scroll              ; foto parada: nada a desenhar no vblank
     jsr desenha_hud          ; so sobra TELA_JOGO aqui
     jmp @scroll
 @menu:
@@ -2920,6 +3009,7 @@ paletas_carro:
 .include "dialogo.inc"
 .include "jogo.inc"
 .include "carro.inc"
+.include "fotos.inc"
 
 .segment "VECTORS"
     .word nmi, reset, irq

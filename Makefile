@@ -3,7 +3,7 @@ DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin \
         build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc \
         build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc \
         build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam \
-        build/carro_nt1.nam build/carro.pal build/carro.inc
+        build/carro_nt1.nam build/carro.pal build/carro.inc build/fotos.inc
 
 all: $(JOGO)
 
@@ -31,6 +31,10 @@ build/musica.inc: tools/make_song.py
 build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam build/carro_nt1.nam build/carro.pal build/carro.inc: tools/make_carro.py tools/make_chr.py
 	@mkdir -p build
 	python3 tools/make_carro.py
+
+build/fotos.inc: tools/make_foto.py tools/make_chr.py $(wildcard fotos/*)
+	@mkdir -p build
+	python3 tools/make_foto.py
 
 # ---- o cartucho ----
 $(JOGO): src/jogo.s $(DADOS) unrom.cfg

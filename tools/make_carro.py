@@ -15,7 +15,6 @@ tracejado da rua) tem um periodo que cabe um numero inteiro de vezes em
 """
 import sys
 sys.path.insert(0, "tools")
-from make_sprites import VICTOR, AMANDA_CABECA
 
 W, H = 512, 240
 NT_TILES_W = 32           # tiles por nametable (256px / 8)
@@ -126,128 +125,83 @@ def codificar(tile):
 
 # =================================================== o carro e quem ta nele
 #
-# Fica numa posicao FIXA na tela (sprite -- nao rola com o fundo), grande --
-# perto da camera, com espaco de verdade pros dois respirarem na janela.
-# Reaproveita o desenho de cabeca/ombro dos sprites do restaurante (VICTOR
-# e AMANDA_CABECA, ver tools/make_sprites.py) em vez de redesenhar do zero
-# -- mesma barba, mesmo cabelo, mesmo laco, so que 2x maior (ver _scale2x)
-# e com uma paleta propria PRA CADA UM (nao uma paleta generica de "cabeca"
-# igual antes), porque o cinza do colarinho do Victor e o rosa do laco da
-# Amanda nao cabem juntos num unico slot de 3 cores.
+# O Fiat Argo branco do Victor de verdade, de PERFIL (nao mais de frente
+# com os dois no vidro) -- pedido dele, foto em mao: vidro fechado/fume,
+# sem gente aparecendo. Isso muda o problema todo pro melhor: nao precisa
+# mais reservar metade da largura pra cada personagem (e cada um com a
+# PROPRIA paleta, ver historico no CLAUDE.md) -- e um perfil lateral usa a
+# largura pra mostrar o COMPRIMENTO do carro (capo+cabine+porta-malas lado
+# a lado), que e exatamente a dimensao que "carro comprido" pedia, em vez
+# de duas cabecas lado a lado. Fica numa posicao FIXA na tela (sprite --
+# nao rola com o fundo).
 #
-# A LARGURA (8 colunas = 64px) ja esta no teto fisico do PPU: cada linha de
-# varredura so desenha no maximo 8 sprites, e a janela/carroceria ja usam
-# as 8 colunas inteiras -- nao da pra alargar mais sem estourar esse limite
-# (sprite excedente simplesmente some da tela real, o emulador nao avisa).
+# A LARGURA (8 colunas = 64px) continua no MESMO teto fisico do PPU de
+# sempre (8 sprites por linha de varredura, o maximo que o hardware
+# desenha) -- so que agora ela representa comprimento, nao largura de
+# carroceria, entao rende muito mais "carro comprido" pro mesmo orcamento.
 #
-# A silhueta nao e um retangulo -- tem celula vazia (canto do teto arredon-
-# dado, vao embaixo do parachoque). O jogo so gasta 1 sprite de OAM por
-# celula NAO vazia (ver main()), entao arredondar economiza orcamento, alem
-# de ficar mais bonito.
+# So uma paleta agora (vidro fechado tira a paleta extra por personagem):
+# 1 = trim escuro (vidro fume, pneu, para-choque, friso) -- 0x00, NAO 0x0F
+# puro, pra nao sumir em cima da rua (mesma armadilha de sempre, ver
+# CLAUDE.md); 2 = branco (carroceria); 3 = ambar (farol/retrovisor -- o
+# mesmo tom das janelas acesas dos predios atras, ver PALETAS acima).
 
 CARRO_TILES_W = 8
-CARRO_TILES_H = 8
+CARRO_TILES_H = 6
 CARRO_PX_W = CARRO_TILES_W * 8    # 64
-CARRO_PX_H = CARRO_TILES_H * 8    # 64
+CARRO_PX_H = CARRO_TILES_H * 8    # 48
 
 _carro_px = [['.'] * CARRO_PX_W for _ in range(CARRO_PX_H)]
-PAL_CEL = [[0] * CARRO_TILES_W for _ in range(CARRO_TILES_H)]   # 0=carro, 1=Victor, 2=Amanda
+PAL_CEL = [[0] * CARRO_TILES_W for _ in range(CARRO_TILES_H)]   # so a paleta 0 por enquanto
 
 def _fill(x0, y0, w, h, ch):
     for y in range(y0, y0 + h):
         for x in range(x0, x0 + w):
             _carro_px[y][x] = ch
 
-def _stamp(x0, y0, linhas):
-    for j, linha in enumerate(linhas):
-        for i, ch in enumerate(linha):
-            if ch != '.':
-                _carro_px[y0 + j][x0 + i] = ch
-
-def _scale2x(linhas):
-    saida = []
-    for linha in linhas:
-        dobrada = "".join(c * 2 for c in linha)
-        saida.append(dobrada)
-        saida.append(dobrada)
-    return saida
-
-def _victor_retrato():
-    """Cabeca+ombros do Victor sentado, direto do sprite do restaurante
-    (VICTOR[0:16] -- cabelo, barba cheia, e as duas linhas de ombro/
-    colarinho que ja fecham o desenho, ver make_sprites.py). Mesmo mapa de
-    cor de sempre: '1'=cabelo, '2'=pele, '3'=cinza do colarinho -- so
-    reaproveitado tal e qual, sem redesenhar."""
-    return _scale2x(VICTOR[0:16])
-
-def _amanda_retrato():
-    """Cabeca da Amanda ate o queixo (AMANDA_CABECA[0:13], cabelo+laco+
-    rosto -- pula o pescocinho fino original, curto demais pra esse
-    tamanho) mais duas linhas de ombro NOVAS: vestido preto (mesma cor do
-    cabelo, do jeito que o sprite dela ja trata as duas coisas -- ver
-    docstring de make_sprites.py) com uma tira de pele nas pontas (braco).
-    '1'=cabelo/vestido, '2'=pele, '3'=laco."""
-    def l(*segs):
-        s = "".join(c * n for c, n in segs)
-        assert len(s) == 16, f"linha do ombro com {len(s)} chars: {s!r}"
-        return s
-    ombros = [
-        l(('.',3), ('1',10), ('.',3)),
-        l(('.',1), ('2',2), ('1',10), ('2',2), ('.',1)),
-    ]
-    return _scale2x(AMANDA_CABECA[0:13] + ombros)
-
 def _desenhar_carro():
-    # teto (tile-linha 0, y0-7): branco, a mesma cor da carroceria -- nao
-    # da pra encaixar isso na propria celula do retrato (aquelas celulas
-    # sao a paleta do Victor ou da Amanda, sem branco disponivel), entao e
-    # uma fileira PROPRIA, gastando orcamento de OAM de verdade. Pra
-    # sobrar (o teto do NES inteiro e 64 sprites NA TELA, nao por objeto),
-    # a carroceria encolheu de 4 pra 3 linhas de tile (ver mais abaixo) --
-    # os retratos ficam do jeito que estavam, ninguem mexeu neles.
-    _fill(0, 0, 64, 8, '2')
-    for i in range(3):                     # corta canto -- arredonda o teto
-        for j in range(3 - i):
-            _carro_px[i][j] = '.'
-            _carro_px[i][63 - j] = '.'
+    # nariz do carro em x=63 (anda "pra direita"); traseira em x=0.
+    # teto: uma aba de spoiler na traseira (o Argo tem um bem sutil, ver
+    # foto de referencia), depois plano ate perto do para-brisa
+    _fill(14, 2, 5, 2, '2')                # aba do spoiler
+    _fill(14, 4, 34, 4, '2')                # teto
 
-    # janela (tile-linhas 1-4, y8-39): SEM preencher de azul primeiro -- o
-    # respiro ao redor de cada retrato fica transparente (pixel 0, nao
-    # pintado), entao o que aparece ali e o proprio fundo da cena (ceu/
-    # predio) atras do carro, como se fosse o vidro de verdade refletindo
-    # a rua -- nao uma cor solida flutuando por cima das cabecas feito na
-    # versao anterior. (Nao da pra pintar de azul aqui de qualquer jeito:
-    # essas celulas agora sao a paleta do Victor ou da Amanda, onde o
-    # indice 3 e cinza/rosa, nao azul -- cada celula so tem UMA paleta.)
-    victor = _victor_retrato()            # 32x32 (16x16 fonte, 2x)
-    amanda = _amanda_retrato()             # 32x30 (15x15 fonte, 2x)
-    # encostados exatamente na borda das 4 colunas de cada um (x0-31 e
-    # x32-63) -- nao pode invadir a coluna vizinha, que e de uma paleta
-    # DIFERENTE (ver PAL_CEL logo abaixo); um pixel a mais de qualquer
-    # lado rendeia com a cor errada (ou, pra Amanda, sai fora da grade)
-    _stamp(0, 8, victor)                   # metade esquerda da janela
-    _stamp(32, 8, amanda)                  # metade direita
-    for r in range(1, 5):
-        for c in range(0, 4):
-            PAL_CEL[r][c] = 1              # Victor
-        for c in range(4, 8):
-            PAL_CEL[r][c] = 2              # Amanda
+    # vidro fume -- trapezio (mais estreito em cima, perto do teto, mais
+    # largo embaixo, perto da linha de cintura), sugerindo o angulo do
+    # para-brisa (frente) e do vidro traseiro (atras) num pixel art bem
+    # simples, em "escada" em vez de diagonal de verdade
+    _fill(17, 8, 28, 3, '1')
+    _fill(14, 11, 35, 3, '1')
+    _fill(11, 14, 41, 6, '1')
 
-    # carroceria (tile-linhas 5-7, y40-63, todas as 8 colunas) -- 3
-    # linhas, nao 4: o teto acima tomou o lugar que uma 4a linha ocuparia
-    _fill(0, 40, 64, 10, '2')              # branco
-    _fill(31, 41, 2, 8, '1')               # friso da porta
-    _fill(0, 50, 64, 3, '1')               # parachoque
-    _fill(0, 53, 64, 11, '.')              # vao embaixo (chao) ate a base do sprite
+    # carroceria principal -- do pe do vidro (y20, logo abaixo do trapezio
+    # de cima) ate a soleira, LARGURA TODA (nao so capo/porta-malas nas
+    # pontas): o vidro so descia ate y19, entao parar o branco em y24
+    # deixava um vao sem preencher entre y20-23 no meio (nem vidro, nem
+    # carroceria, nem capo/porta-malas -- eles so cobrem as pontas) --
+    # o fundo da cena aparecia ali, uma fatia horizontal faltando no
+    # meio do carro.
+    _fill(4, 20, 58, 12, '2')
+    _fill(0, 22, 4, 10, '1')                # para-choque traseiro
+    _fill(60, 22, 4, 10, '1')               # para-choque dianteiro
+    _fill(4, 32, 58, 2, '1')                # soleira
 
-    def _roda(x0, y0):
-        _fill(x0, y0, 14, 14, '1')
-        for i in range(2):                 # corta os 4 cantos -- arredonda o pneu
-            for j in range(2 - i):
-                for dy, dx in ((i, j), (i, 13 - j), (13 - i, j), (13 - i, 13 - j)):
-                    _carro_px[y0 + dy][x0 + dx] = '.'
-    _roda(8, 44)                           # roda esquerda -- topo (y44) fica sob o
-    _roda(42, 44)                          # parachoque, so o pneu "aparece" embaixo
+    # farol (frente) e lanterna (atras) -- so um aceno de cor pra marcar
+    # as pontas, e o retrovisor, perto da base do para-brisa
+    _fill(59, 23, 3, 3, '3')
+    _fill(2, 23, 3, 3, '3')
+    _fill(45, 10, 3, 3, '1')
+
+    def _roda(x0, y0, tam):
+        c = (tam - 1) / 2
+        for y in range(tam):
+            for x in range(tam):
+                if (x - c) ** 2 + (y - c) ** 2 <= c * c:
+                    _carro_px[y0 + y][x0 + x] = '1'
+        aro = tam // 3
+        _fill(x0 + aro, y0 + aro, tam - 2 * aro, tam - 2 * aro, '3')
+    _roda(6, 30, 14)                        # roda traseira
+    _roda(44, 30, 14)                       # roda dianteira
 
 def main():
     desenhar()
@@ -275,19 +229,17 @@ def main():
     pal = bytearray()
     for p in PALETAS:
         pal += bytes(p)
-    # paletas de sprite: 0 = carro (cinza-escuro/branco/vidro azul); 1 =
-    # Victor (cabelo preto/pele/cinza do colarinho -- mesmo mapa de
-    # PALETA_SPRITE_VICTOR); 2 = Amanda (cabelo preto/pele/laco rosa --
-    # mesmo mapa de PALETA_SPRITE_CABECA). Precisam ser DUAS paletas
-    # separadas (nao uma "cabeca" generica como antes): o cinza do
-    # colarinho dele e o rosa do laco dela nao cabem no mesmo slot de 3
-    # cores. O trim do carro (roda, parachoque, friso) usa 0x00 (cinza bem
-    # escuro), NAO 0x0F (preto puro) -- a rua tambem e 0x0F, e roda/
-    # parachoque cai bem em cima dela; com a mesma cor eles ficam
-    # invisiveis (mesma armadilha da calcada vs. rua, ver CLAUDE.md).
-    pal += bytes([0x0F, 0x00, 0x30, 0x21])       # 0: carro branco
-    pal += bytes([0x0F, 0x0F, 0x37, 0x10])       # 1: Victor -- pele 0x37, colarinho 0x10
-    pal += bytes([0x0F, 0x0F, 0x37, 0x24])       # 2: Amanda -- pele 0x37, laco 0x24
+    # paleta de sprite: so uma agora (vidro fechado/fume, sem gente
+    # aparecendo, tira a exigencia de uma paleta por personagem que a
+    # versao anterior precisava). 1 = trim escuro (vidro, pneu, para-
+    # choque, friso) -- 0x00, NAO 0x0F puro: a rua tambem e 0x0F, e o
+    # trim cai bem em cima dela; com a mesma cor ele fica invisivel
+    # (mesma armadilha da calcada vs. rua, ver CLAUDE.md). 2 = branco
+    # (carroceria). 3 = ambar (farol/retrovisor -- mesmo tom das janelas
+    # acesas dos predios atras, PALETAS[1]).
+    pal += bytes([0x0F, 0x00, 0x30, 0x27])       # 0: o carro
+    pal += bytes([0x0F, 0x0F, 0x0F, 0x0F])       # 1 (livre)
+    pal += bytes([0x0F, 0x0F, 0x0F, 0x0F])       # 2 (livre)
     pal += bytes([0x0F, 0x0F, 0x0F, 0x0F])       # 3 (livre)
     open("build/carro.pal", "wb").write(bytes(pal[:32]))
 

@@ -8,6 +8,7 @@ pra checar, em teste automatizado, que a tela foi montada como deveria.
 
 Usado por test_menu.py (verificacao) e screenshot.py (desenha o PNG).
 """
+import copy
 import sys
 
 # ====================================================================== CPU
@@ -416,6 +417,19 @@ class NES:
         self.cpu = CPU(self.bus)
         self.cpu.reset()
         self.frames = 0
+
+    def copia(self):
+        """Um segundo console no MESMO ponto, pra testar dois caminhos a
+        partir dali sem repetir o trajeto inteiro. copy.deepcopy direto nao
+        serve: a tabela de opcodes da CPU sao closures presas a CPU
+        original, e a copia continuaria executando no console antigo."""
+        novo = NES.__new__(NES)
+        novo.frames = self.frames
+        novo.bus = copy.deepcopy(self.bus)
+        novo.cpu = CPU(novo.bus)
+        for k in ("a", "x", "y", "sp", "pc", "c", "z", "i", "d", "v", "n", "cycles"):
+            setattr(novo.cpu, k, getattr(self.cpu, k))
+        return novo
 
     def run_cycles(self, n):
         target = self.cpu.cycles + n

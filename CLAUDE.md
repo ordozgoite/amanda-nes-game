@@ -232,6 +232,18 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   unico vizinho, checar contra TODOS os fundos que aquele elemento pode
   sobrepor.
 
+- **`copy.deepcopy` num `NES` do emulador gera um console zumbi.** A
+  tabela de opcodes da CPU sao closures presas a CPU original, entao a
+  copia executa instrucoes no console antigo e trava com "opcode nao
+  implementado". Pra testar dois caminhos a partir do mesmo ponto (ex.:
+  B e START no carro), use `nes.copia()`, que recria a CPU por cima de uma
+  copia do barramento.
+- **Foto colorida de verdade nao cabe no NES.** O atributo de 16x16 quebra
+  a pele do rosto em blocos, e nenhuma escolha de paleta salvou (testado).
+  As fotos sao sepia pontilhadas, com UMA paleta so, e os tiles ainda
+  precisam ser agrupados (k-medoides em `make_foto.py`), porque o
+  pontilhado quase nunca repete e a foto sozinha passa de 256 tiles.
+
 ## Estado atual
 
 Pronto: tela de titulo (em silencio -- START toca um "plin" e leva pra
@@ -268,32 +280,33 @@ Minigame das pizzas caindo, com fluxo completo:
 
 **Cena do carro** (`tela = TELA_CARRO`, banco `BANCO_CARRO`, ver
 `tools/make_carro.py`/`carrega_carro` em `src/jogo.s`): os dois indo pra
-casa depois do encontro. Por enquanto so o visual -- carro branco GRANDE
-(64x64px -- largura no teto fisico de 8 sprites/scanline do PPU, ver
-armadilha abaixo) parado na tela (sprite), na faixa de baixo da pista --
-a mais perto da camera, nao na calcada. Os retratos dos dois na janela NAO
-sao um desenho novo -- sao `VICTOR`/`AMANDA_CABECA` (o mesmo sprite deles
-sentados no restaurante, ver `tools/make_sprites.py`) reaproveitados 2x
-maiores (`_scale2x`), cada um com paleta PROPRIA (nao uma paleta generica
-de "cabeca" -- o cinza do colarinho do Victor e o rosa do laco da Amanda
-nao cabem juntos num so slot de 3 cores). O vidro nao e pintado de azul:
-o respiro ao redor de cada retrato fica transparente, deixando o fundo da
-cena (ceu/predio) aparecer, como reflexo de verdade -- pintar seria
-impossivel de qualquer jeito, ja que essas celulas sao a paleta do Victor
-ou da Amanda, sem slot de azul disponivel. Ceu de meia-noite estrelado e
-predios/calcada/rua deslizando atras dele em rolagem de hardware continua
-(loop de 512px sem costura visivel). Tem teto (branco, mesma cor da
-carroceria -- fileira PROPRIA de sprites, nao da pra economizar aqui
-aproveitando a celula do retrato: aquela celula e a paleta do Victor ou
-da Amanda, sem branco disponivel). A largura (64px = 8 sprites) ja esta
-no teto FISICO do PPU -- 8 sprites e o maximo que uma linha de varredura
-do NES desenha, e a carroceria/janela ja usam as 8 colunas inteiras; nao
-da pra alargar mais sem sprite sumindo no hardware de verdade (ver
-armadilha abaixo). A silhueta nao e um retangulo uniforme (celula vazia
-no vao embaixo do parachoque) -- os sprites vem de uma tabela de
-posicao/tile/paleta gerada por `make_carro.py` e consumida por
-`monta_oam_carro`, nao de um loop fixo (ver armadilha da silhueta
-irregular abaixo). START volta pro menu. Sem musica nessa tela ainda.
+casa depois do encontro. Por enquanto so o visual -- o Fiat Argo branco
+do Victor DE VERDADE (foto de referencia dele), de PERFIL lateral (nao
+mais de frente com os dois visiveis pelo vidro -- pedido dele: vidro
+fechado/fume, sem gente aparecendo). Isso simplificou bastante: uma unica
+paleta de sprite agora (trim escuro/branco/ambar), sem precisar de uma
+paleta por personagem. 64x48px (a largura, 8 sprites = 8 colunas, ainda
+esbarra no MESMO teto fisico do PPU de sempre -- 8 e o maximo que uma
+linha de varredura do NES desenha -- mas agora ela representa o
+COMPRIMENTO do carro, nao a largura de uma carroceria vista de frente,
+entao rende muito mais sensacao de "carro comprido" pro mesmo orcamento
+de pixels). Parado na tela (sprite), na faixa de baixo da pista -- a mais
+perto da camera --, ceu de meia-noite estrelado e predios/calcada/rua
+deslizando atras dele em rolagem de hardware continua (loop de 512px sem
+costura visivel). A silhueta nao e um retangulo uniforme -- os sprites
+vem de uma tabela de posicao/tile/paleta gerada por `make_carro.py` e
+consumida por `monta_oam_carro`, nao de um loop fixo (ver armadilha da
+silhueta irregular abaixo). START volta pro menu. Sem musica nessa tela
+ainda.
+
+**Fotos** (`tela = TELA_FOTO`, ver `tools/make_foto.py`/`carrega_foto`):
+B no carro abre a primeira; cada foto em `fotos/` vira uma polaroide
+sepia pontilhada com legenda (`FOTOS` no gerador: arquivo, recorte,
+legenda). O gerador escolhe o banco (4-6) e emite as tabelas em
+`build/fotos.inc`. B passa pra proxima; depois da ultima, volta pro menu
+(provisorio, ate existir a cena final). A musica do carro em diante e o
+refrao de "Amanda", que continua tocando sem reiniciar entre as fotos; por
+enquanto o minigame ainda usa o mesmo refrao.
 
 ## Falta
 
@@ -302,4 +315,9 @@ irregular abaixo). START volta pro menu. Sem musica nessa tela ainda.
   hoje `atualiza_carro` so checa START. Quando o roteiro estiver pronto,
   da pra reaproveitar o motor de dialogo que ja existe (mesmo esquema de
   `FALA`/balao/`passo_dialogo` da cena da pizzaria).
-- Outras memorias/cenarios, se decidirem incluir mais alguma.
+- **Mais fotos e as legendas de verdade.** Hoje ha uma so, com legenda
+  provisoria ("VICTOR E AMANDA").
+- **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
+  com "FELIZ 2 ANOS DE NAMORO".
+- **Musica nova pro minigame** (o refrao passa a ser so da parte final).
+- Transicao (fade) entre carro e fotos, se ficar seco.

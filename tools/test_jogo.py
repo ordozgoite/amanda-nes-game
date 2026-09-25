@@ -445,13 +445,13 @@ def main():
           f"tela={v.bus.ram[sym['tela']]} banco={v.bus.banco}")
 
     print("\n== 9b. A cena do carro: rolagem e sprites ==")
-    # numero de celulas (lataria + as duas cabecas, ja juntas na mesma
-    # tabela -- ver monta_oam_carro) vem do proprio gerador, pra nao
-    # travar um valor que muda toda vez que a arte do carro mexe
+    # numero de celulas (a silhueta inteira do carro, ver monta_oam_carro)
+    # vem do proprio gerador, pra nao travar um valor que muda toda vez
+    # que a arte do carro mexe
     n_carro = int(re.search(r"CARRO_N_SPRITES\s*=\s*(\d+)",
                              open("build/carro.inc").read()).group(1))
     carro_oam = [v.bus.oam[i:i + 4] for i in range(0, n_carro * 4, 4)]
-    check(f"as {n_carro} celulas do carro (lataria + as duas cabecas) estao visiveis",
+    check(f"as {n_carro} celulas do carro estao visiveis",
           all(s[0] < 0xEF for s in carro_oam),
           [s[0] for s in carro_oam if s[0] >= 0xEF])
     scroll0 = v.bus.ram[sym["carro_scroll"]]
@@ -462,6 +462,39 @@ def main():
           scroll1 != scroll0, f"{scroll0} -> {scroll1}")
     check("mas o sprite do carro fica parado na tela (so o fundo rola)",
           v.bus.oam[3] == x0, f"{x0} -> {v.bus.oam[3]}")
+    check("o carro toca o refrao de \"Amanda\" (a musica da parte final)",
+          v.bus.ram[sym["musica_liga"]] == 1)
+
+    print("\n== 9c. As fotos: B no carro abre a primeira polaroide ==")
+    # copia do console parado no carro: o 9b continua dali com o START
+    fo = v.copia()
+    inc = open("build/fotos.inc").read()
+    n_fotos = int(re.search(r"FOTOS_N\s*=\s*(\d+)", inc).group(1))
+    banco1 = int(re.search(r"foto_banco_tab:\s*\.byte\s*(\d+)", inc).group(1))
+    fo.frame(BTN_B)
+    for _ in range(6): fo.frame()
+    check("B no carro leva pra primeira foto",
+          fo.bus.ram[sym["tela"]] == 4 and fo.bus.banco == banco1,
+          f"tela={fo.bus.ram[sym['tela']]} banco={fo.bus.banco}")
+    nam = open("build/foto1.nam", "rb").read()
+    check("a nametable e a da foto 1, tile por tile (atributos inclusos)",
+          bytes(fo.bus.vram[0x2000:0x2400]) == nam)
+    chr1 = open("build/chr_foto1.bin", "rb").read()
+    check("os tiles da foto foram todos pra pattern table 1",
+          bytes(fo.bus.vram[0x1000:0x1000 + len(chr1)]) == chr1)
+    pal = open("build/foto.pal", "rb").read()
+    check("paleta sepia carregada",
+          bytes(fo.bus.vram[0x3F00:0x3F04]) == pal[:4],
+          bytes(fo.bus.vram[0x3F00:0x3F04]).hex())
+    check("nenhum sprite do carro sobrou por cima da foto",
+          all(fo.bus.oam[i] >= 0xEF for i in range(0, 256, 4)))
+    check("a musica continua ligada na troca pra foto",
+          fo.bus.ram[sym["musica_liga"]] == 1)
+    for _ in range(n_fotos):
+        fo.frame(BTN_B)
+        for _ in range(6): fo.frame()
+    check(f"B depois da ultima foto ({n_fotos}) volta pro menu (por enquanto)",
+          fo.bus.ram[sym["tela"]] == 0, f"tela={fo.bus.ram[sym['tela']]}")
     v.frame(BTN_START)
     for _ in range(6): v.frame()
     check("START na cena do carro volta pro menu (escape hatch de sempre)",

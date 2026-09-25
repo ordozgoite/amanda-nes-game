@@ -106,3 +106,9 @@ for _ in range(150):               # deixa o cenario rolar um pouco
     nes.frame()
 render(nes).save("build/jogo-11-carro-andando.png")
 print("build/jogo-11-carro-andando.png  scroll =", nes.bus.ram[sym["carro_scroll"]])
+
+nes.frame(BTN_B)                  # B no carro -> primeira foto
+for _ in range(6):
+    nes.frame()
+render(nes).save("build/jogo-12-foto.png")
+print("build/jogo-12-foto.png (banco", nes.bus.banco, ")")
