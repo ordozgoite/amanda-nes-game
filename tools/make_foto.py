@@ -33,7 +33,7 @@ from PIL import Image, ImageEnhance, ImageOps
 # legenda: so letras sem acento, numeros e pontuacao da fonte do jogo.
 FOTOS = [
     dict(arquivo="fotos/01-mesa.jpg", recorte=(60, 430, 1080, 1172),
-         legenda="VICTOR E AMANDA"),
+         legenda="NOSSO PRIMEIRO ANO NOVO"),
 ]
 
 # sepia: 0 preto (fundo da tela e sombra da foto), 1 marrom, 2 ambar, 3 creme

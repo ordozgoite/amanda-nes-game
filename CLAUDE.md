@@ -315,8 +315,7 @@ enquanto o minigame ainda usa o mesmo refrao.
   hoje `atualiza_carro` so checa START. Quando o roteiro estiver pronto,
   da pra reaproveitar o motor de dialogo que ja existe (mesmo esquema de
   `FALA`/balao/`passo_dialogo` da cena da pizzaria).
-- **Mais fotos e as legendas de verdade.** Hoje ha uma so, com legenda
-  provisoria ("VICTOR E AMANDA").
+- **Mais fotos.** Hoje ha uma so ("NOSSO PRIMEIRO ANO NOVO").
 - **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
   com "FELIZ 2 ANOS DE NAMORO".
 - **Musica nova pro minigame** (o refrao passa a ser so da parte final).
