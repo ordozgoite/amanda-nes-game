@@ -336,8 +336,11 @@ enquanto o minigame ainda usa o mesmo refrao.
 
 ## Falta
 
-- **Mais fotos, se quiserem.** Hoje sao duas ("NOSSO PRIMEIRO ANO NOVO",
-  "MINHA COMPANHEIRA DE LOJA").
+- **Mais fotos, se quiserem.** Hoje sao tres, nesta ordem: a casa dela a
+  noite ("GOSTEI MUITO DE TE CONHECER / *SMACK*"), "NOSSO PRIMEIRO ANO
+  NOVO" e "MINHA COMPANHEIRA DE LOJA". Opcoes por foto em `FOTOS`
+  (`make_foto.py`): legenda em 2 linhas com "\n", `equaliza` pra foto sem
+  contraste, `ceu_noite` pra trocar ceu de dia por ceu estrelado.
 - **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
   com "FELIZ 2 ANOS DE NAMORO".
 - **Musica nova pro minigame** (o refrao passa a ser so da parte final).

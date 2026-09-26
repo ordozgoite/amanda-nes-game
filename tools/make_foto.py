@@ -30,8 +30,18 @@ from PIL import Image, ImageEnhance, ImageOps
 # ------------------------------------------------------------- as fotos
 # recorte = (x0, y0, x1, y1) em pixels da foto original; a proporcao deve
 # ser perto de FOTO_W:FOTO_H (176:128), senao a imagem estica.
-# legenda: so letras sem acento, numeros e pontuacao da fonte do jogo.
+# legenda: so letras sem acento, numeros e pontuacao da fonte do jogo (mais
+# o '*' de FONTE_EXTRA); "\n" quebra em duas linhas -- uma linha so cabe
+# ~30 caracteres dentro da moldura. equaliza=True espalha os tons a forca:
+# pra foto sem gente e com tudo no mesmo tom medio (muro, portao, ceu
+# nublado), o ajuste normal deixava tudo num sepia lavado so.
+# ceu_noite=Y (em pixels da foto ORIGINAL): acima dessa linha, o que for
+# claro e acinzentado (ceu de dia, nublado) vira noite, com estrelinhas.
+# Arvore, fio e telhado sao escuros ou coloridos e ficam como estao.
 FOTOS = [
+    dict(arquivo="fotos/00-casa.webp", recorte=(120, 200, 1320, 1073), equaliza=True,
+         ceu_noite=430,
+         legenda="GOSTEI MUITO DE TE CONHECER\n*SMACK*"),
     dict(arquivo="fotos/01-mesa.jpg", recorte=(60, 430, 1080, 1172),
          legenda="NOSSO PRIMEIRO ANO NOVO"),
     dict(arquivo="fotos/02-loja.jpg", recorte=(425, 116, 1584, 959),
@@ -48,7 +58,14 @@ W, H = 256, 240
 FOTO_W, FOTO_H = 176, 128
 FOTO_X, FOTO_Y = 40, 40
 MOLDURA = (32, 32, 192, 176)          # x, y, larg, alt (em pixels)
-LEGENDA_Y = FOTO_Y + FOTO_H + 18
+LEGENDA_Y = FOTO_Y + FOTO_H + 18       # centro vertical da faixa de baixo
+LEGENDA_PASSO = 10                     # 7px de letra + 3 de respiro
+
+# glifos que so as legendas usam -- fora do make_chr.FONT de proposito, pra
+# nao crescer a CHR do menu por causa de um asterisco
+FONTE_EXTRA = {
+    "*": [".....", "..X..", "X.X.X", ".XXX.", "X.X.X", "..X..", "....."],
+}
 
 BANCOS_LIVRES = [4, 5, 6]
 BANCO_BYTES = 0x4000
@@ -59,14 +76,34 @@ def converte(foto):
     """Devolve (indices 0-3 pontilhados, alvo continuo 0.0-3.0) da foto."""
     img = Image.open(foto["arquivo"]).convert("RGB").crop(foto["recorte"])
     g = img.convert("L").resize((FOTO_W, FOTO_H), Image.LANCZOS)
-    g = ImageOps.autocontrast(g, cutoff=1)
+    if foto.get("equaliza"):
+        g = ImageOps.equalize(g)
+    else:
+        g = ImageOps.autocontrast(g, cutoff=1)
     alvo = [g.getpixel((x, y)) / 255 * 3 for y in range(FOTO_H) for x in range(FOTO_W)]
+    if "ceu_noite" in foto:
+        anoitece(foto, img, alvo)
     idx = []
     for y in range(FOTO_H):
         for x in range(FOTO_W):
             v = alvo[y * FOTO_W + x] + (BAYER[y % 4][x % 4] + .5) / 16 - .5
             idx.append(max(0, min(3, round(v))))
     return idx, alvo
+
+def anoitece(foto, img, alvo):
+    x0, y0, x1, y1 = foto["recorte"]
+    ate = (foto["ceu_noite"] - y0) * FOTO_H // (y1 - y0)
+    cor = img.resize((FOTO_W, FOTO_H), Image.LANCZOS)
+    ceu = []
+    for y in range(max(0, min(FOTO_H, ate))):
+        for x in range(FOTO_W):
+            r, g, b = cor.getpixel((x, y))
+            if (r + g + b) / 3 > 120 and max(r, g, b) - min(r, g, b) < 45:
+                alvo[y * FOTO_W + x] = 0.0      # preto: o pontilhado marrom parecia ruido
+                ceu.append((x, y))
+    rng = random.Random(20251231)
+    for x, y in rng.sample(ceu, min(len(ceu), len(ceu) // 250 + 1)):
+        alvo[y * FOTO_W + x] = 3.0               # estrela: um pixel creme
 
 def celula(arr, larg, tx, ty):
     return tuple(arr[(ty * 8 + y) * larg + tx * 8 + x] for y in range(8) for x in range(8))
@@ -111,15 +148,19 @@ def monta_tela(foto):
     for y in range(my, my + mh):
         for x in range(mx, mx + mw):
             px[y][x] = 3
-    s = foto["legenda"].upper()
-    assert all(ch == ' ' or ch in FONT for ch in s), f"letra fora da fonte: {s!r}"
-    lx = (W - len(s) * 6) // 2
-    assert mx < lx and lx + len(s) * 6 < mx + mw, f"legenda larga demais: {s!r}"
-    for n, ch in enumerate(s):
-        for j, linha in enumerate(FONT.get(ch, [])):
-            for i, p in enumerate(linha):
-                if p == 'X':
-                    px[LEGENDA_Y + j][lx + n * 6 + i] = 0
+    fonte = {**FONT, **FONTE_EXTRA}
+    linhas = foto["legenda"].upper().split("\n")
+    y0 = LEGENDA_Y - (len(linhas) - 1) * LEGENDA_PASSO // 2
+    assert y0 + len(linhas) * LEGENDA_PASSO < my + mh, f"legenda alta demais: {linhas!r}"
+    for k, s in enumerate(linhas):
+        assert all(ch == ' ' or ch in fonte for ch in s), f"letra fora da fonte: {s!r}"
+        lx = (W - len(s) * 6) // 2
+        assert mx < lx and lx + len(s) * 6 < mx + mw, f"legenda larga demais: {s!r}"
+        for n, ch in enumerate(s):
+            for j, linha in enumerate(fonte.get(ch, [])):
+                for i, p in enumerate(linha):
+                    if p == 'X':
+                        px[y0 + k * LEGENDA_PASSO + j][lx + n * 6 + i] = 0
     idx, alvo = converte(foto)
     for y in range(FOTO_H):
         for x in range(FOTO_W):

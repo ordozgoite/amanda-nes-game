@@ -137,3 +137,9 @@ for _ in range(6):
     nes.frame()
 render(nes).save("build/jogo-13-foto2.png")
 print("build/jogo-13-foto2.png (banco", nes.bus.banco, ")")
+
+nes.frame(BTN_B)                  # a terceira foto
+for _ in range(6):
+    nes.frame()
+render(nes).save("build/jogo-14-foto3.png")
+print("build/jogo-14-foto3.png (banco", nes.bus.banco, ")")
