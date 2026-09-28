@@ -20,17 +20,21 @@ def periodos_esperados(canais):
 
     Numa pausa (indice 0) a engine so zera o volume -- @pausa em jogo.s nao
     escreve $4002/$4003 (nem tri_lo/tri_hi), entao o periodo continua sendo
-    o da ultima nota tocada."""
+    o da ultima nota tocada. Por isso um canal que COMECA com pausa (o
+    contratempo do Grieg) mostra ali o periodo da ultima nota do laco
+    anterior -- o esperado e o do laco ja rodando, nao o da 1a passada."""
+    def periodo(c, nome):
+        f = frequencia(indice(nome))
+        div = 32.0 if c == 2 else 16.0
+        return max(2, min(2047, round(CPU_HZ / (div * f)) - 1))
+
     trilhas = []
     for c, notas in enumerate(canais):
         linha = []
-        p_atual = 0
+        p_atual = periodo(c, [n for n, _ in notas if n != "P"][-1])
         for nome, dur in notas:
-            i = indice(nome)
-            if i != 0:
-                f = frequencia(i)
-                div = 32.0 if c == 2 else 16.0
-                p_atual = max(2, min(2047, round(CPU_HZ / (div * f)) - 1))
+            if indice(nome) != 0:
+                p_atual = periodo(c, nome)
             linha += [p_atual] * dur
         trilhas.append(linha)
     return trilhas
@@ -165,57 +169,70 @@ def main():
         check("bit de volume constante ligado", nes2.bus.apu[0x00] & 0x10 != 0)
         check("contador de duracao segurado", nes2.bus.apu[0x00] & 0x20 != 0)
 
-    print("\n== 6. O minigame troca pra musica de \"Amanda\" ==")
-    # carrega_jogo chama troca_musica(1); carrega_menu chama musica_para e
-    # carrega_cena chama troca_musica(0) com o mesmo mecanismo, entao testar
-    # uma direcao (aqui) cobre a troca em si.
-    esperado_jogo = periodos_esperados(MUSICAS[1])
-    laco_jogo = len(esperado_jogo[0])
-    JANELA_JOGO = laco_jogo
+    print("\n== 6. O minigame troca pro Grieg ==")
+    # carrega_jogo chama troca_musica(MUSICA_JOGO); carrega_menu chama
+    # musica_para e carrega_cena troca_musica(MUSICA_PIZZARIA) com o mesmo
+    # mecanismo, entao testar uma direcao (aqui) cobre a troca em si. O
+    # refrao de "Amanda" so estreia no carro (conferido em test_jogo.py).
+    esperado_jogo = periodos_esperados(MUSICAS[2])
+    laco_jogo = len(esperado_jogo[0])       # em passos -- quadros na vel. base
 
     nes3 = NES(ROM)
     entra_no_minigame(nes3, sym)
-    obs_jogo = [[], [], []]
-    for _ in range(JANELA_JOGO + laco_jogo + 8):
-        # a gravacao dura quase 1 minuto -- tanto perder (5 erros) quanto
-        # VENCER (15 pontos) agora pausam a musica pra tocar uma
-        # fraseszinha (ver checa_derrota/checa_vitoria em jogo.s), o que
-        # derrubava esse teste sem ter nada a ver com ele. Pega pizza pra
-        # nao perder, mas trava um ponto antes de vencer de verdade -- e,
-        # ao travar, afasta o player de proposito (senao ele fica parado
-        # embaixo de onde a ultima pizza caiu e acaba pegando a PROXIMA sem
-        # querer, so por estar no lugar certo por acidente). Tambem nunca
-        # deixa os erros chegarem no fim -- so pra manter o refrao tocando
-        # sem interrupcao a gravacao inteira.
-        if nes3.bus.ram[sym["jogo_pontos"]] < 14:
-            if nes3.bus.ram[sym["pz_ativa"]]:
-                nes3.bus.ram[sym["player_x"]] = nes3.bus.ram[sym["pz_x"]]
-        else:
-            nes3.bus.ram[sym["player_x"]] = 0
-        if nes3.bus.ram[sym["jogo_erros"]] >= 4:
-            nes3.bus.ram[sym["jogo_erros"]] = 0
-        nes3.frame()
-        v = lidos(nes3.bus)
-        for c in range(3):
-            obs_jogo[c].append(v[c])
+    base = nes3.bus.ram[sym["ch_base_lo"]] | (nes3.bus.ram[sym["ch_base_hi"]] << 8)
+    check("o minigame toca o Grieg, nao o refrao", base == sym["musica2_canal0"],
+          f"${base:04X}")
 
-    desloc_jogo = acha_desloc(obs_jogo[0], esperado_jogo[0], JANELA_JOGO)
-    check("a musica troca ao entrar no minigame", desloc_jogo is not None,
-          "" if desloc_jogo is not None else
-          "nenhum deslocamento faz o refrao bater")
+    def grava(nes, quadros, pontos):
+        """Grava os periodos com a barra travada em `pontos` -- ela nunca
+        pega pizza (o jogador fica longe) e os erros nunca chegam no fim,
+        senao vitoria/derrota pausariam a musica no meio da gravacao."""
+        obs = [[], [], []]
+        for _ in range(quadros):
+            nes.bus.ram[sym["jogo_pontos"]] = pontos
+            nes.bus.ram[sym["player_x"]] = 0 if nes.bus.ram[sym["pz_x"]] > 128 else 240
+            nes.bus.ram[sym["jogo_erros"]] = 0
+            nes.frame()
+            v = lidos(nes.bus)
+            for c in range(3):
+                obs[c].append(v[c])
+        return obs
 
-    if desloc_jogo is not None:
-        for c in range(3):
-            erros = 0
-            primeiro = None
-            for i in range(laco_jogo):
-                if obs_jogo[c][desloc_jogo + i] != esperado_jogo[c][i]:
-                    erros += 1
-                    if primeiro is None:
-                        primeiro = (i, obs_jogo[c][desloc_jogo + i], esperado_jogo[c][i])
-            det = "" if not erros else f"1o erro no quadro {primeiro[0]}: " \
-                                       f"leu {primeiro[1]}, esperava {primeiro[2]}"
-            check(f"canal {c} (refrao): {laco_jogo} quadros conferem", erros == 0, det)
+    from make_song import VEL_JOGO, VEL_BASE_MUSICA
+    from make_jogo import PONTOS_MIN
+
+    def casa(obs, vel):
+        """O motor da vel/16 passos por quadro, e os tres canais tem que andar
+        juntos: o quadro f mostra, em TODOS eles, o passo t0 + (frac +
+        vel*(f+1))//16 da partitura. Procura o passo inicial t0 e a fracao
+        que sobrou do acumulador -- a musica ja comecou antes da gravacao, em
+        fase desconhecida -- e exige que a gravacao inteira bata."""
+        n = len(obs[0])
+        for frac in range(VEL_BASE_MUSICA if vel != VEL_BASE_MUSICA else 1):
+            passos = [(frac + vel * (f + 1)) // VEL_BASE_MUSICA for f in range(n)]
+            for t0 in range(laco_jogo):
+                if all(obs[c][f] == esperado_jogo[c][(t0 + passos[f]) % laco_jogo]
+                       for f in range(n) for c in range(3)):
+                    return frac, t0
+        return None
+
+    # barra vazia: um passo por quadro -- o laco inteiro (e mais um pouco,
+    # pra ver ele fechar) bate quadro a quadro com a partitura
+    obs = grava(nes3, laco_jogo + 60, 0)
+    check("barra vazia: andamento base", nes3.bus.ram[sym["musica_vel"]] == 16,
+          nes3.bus.ram[sym["musica_vel"]])
+    check(f"barra vazia: {laco_jogo + 60} quadros conferem nos 3 canais",
+          casa(obs, 16) is not None)
+
+    for pontos in (PONTOS_MIN // 2, PONTOS_MIN - 1):
+        vel = VEL_JOGO[pontos]
+        obs = grava(nes3, 400, pontos)
+        check(f"{pontos} pontos: velocidade {vel}/{VEL_BASE_MUSICA}",
+              nes3.bus.ram[sym["musica_vel"]] == vel, nes3.bus.ram[sym["musica_vel"]])
+        check(f"{pontos} pontos: os 3 canais aceleram juntos, na partitura",
+              casa(obs, vel) is not None)
+    check("quase vencendo, o tema toca no dobro da velocidade",
+          VEL_JOGO[PONTOS_MIN - 1] == 2 * VEL_BASE_MUSICA, VEL_JOGO)
 
     print("\n== 7. A tela continua viva junto com a musica ==")
     # 'nes' ja saiu do menu (ficou parado na pizzaria desde a secao 3, com a

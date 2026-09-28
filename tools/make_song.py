@@ -28,13 +28,14 @@ def frequencia(idx):
 N_NOTAS = 60          # do 2 ate si 6
 
 # ------------------------------------------------------------------ musica
-# Duas musicas, trocadas pelo assembly conforme a tela (ver troca_musica em
-# jogo.s). O menu fica em silencio; a introducao comeca quando entra na
-# pizzaria (embalada pelo "plin" do START, mais abaixo) e toca por baixo do
-# passeio e do dialogo; so quando entra no minigame das pizzas e que troca
-# pro refrao de "Amanda". As duas musicas ja ficaram coladas num loop so,
-# mas na gravacao real tem um verso inteiro entre elas -- emendadas direto
-# soava como duas musicas diferentes grudadas.
+# Tres musicas, trocadas pelo assembly conforme a tela (ver troca_musica em
+# jogo.s). O menu fica em silencio; a introducao de "Amanda" comeca quando
+# entra na pizzaria (embalada pelo "plin" do START, mais abaixo) e toca por
+# baixo do passeio e do dialogo; o minigame das pizzas toca o Grieg, que
+# acelera com a barra; e o refrao de "Amanda" fica guardado pra depois que
+# ela vence -- estreia no carro e segue pelas fotos. Introducao e refrao ja
+# ficaram coladas num loop so, mas na gravacao real tem um verso inteiro
+# entre elas -- emendadas direto soava como duas musicas diferentes grudadas.
 
 # --------------------------------------------------- musica 0: a pizzaria
 # Introducao de "Amanda" (Boston), a partir da tablatura.
@@ -69,7 +70,7 @@ canal1_cena = [("B4" if c is ARPEJO_G else "C5", CP) for c in COMPASSOS]
 # canal 2: pedal de sol, rearticulado a cada meio compasso pra nao virar orgao
 canal2_cena = [("G2", CP // 2)] * (len(COMPASSOS) * 2)
 
-# --------------------------------------------------- musica 1: o minigame
+# ------------------------------------ musica 1: o refrao (carro e fotos)
 # O refrao de "Amanda", transcrito do MIDI oficial da musica (tools/midi.py
 # le-lo: 15 faixas, bateria + baixo + guitarras + uma faixa de sax alto que
 # funciona como guia de melodia porque a musica nao tem vocal gravado).
@@ -92,7 +93,7 @@ canal2_cena = [("G2", CP // 2)] * (len(COMPASSOS) * 2)
 #
 # Duracao em quadros: arredondada pra grade de semicolcheia (15 quadros a
 # 60 BPM), o suficiente pra cobrir as notas mais curtas.
-canal0_jogo = [
+canal0_refrao = [
     ("A#3", 60), ("P", 45), ("G3", 15), ("D#4", 15), ("E4", 15), ("E4", 15),
     ("E4", 75), ("D4", 15), ("A#3", 45), ("P", 45), ("G3", 15), ("D#4", 15),
     ("E4", 15), ("E4", 15), ("E4", 45), ("D4", 15), ("C#4", 15), ("A#3", 120),
@@ -102,7 +103,7 @@ canal0_jogo = [
     ("B3", 15), ("A#3", 15), ("G#3", 105), ("P", 120),
 ]
 
-canal1_jogo = [
+canal1_refrao = [
     ("G4", 180), ("G4", 180),
     ("E4", 60), ("E4", 60),
     ("B4", 120), ("B4", 120),
@@ -113,19 +114,117 @@ canal1_jogo = [
     ("D4", 120), ("D4", 120),
 ]
 
-canal2_jogo = [
+canal2_refrao = [
     ("G2", 225), ("D2", 15), ("G2", 105), ("D2", 15), ("E2", 120), ("B2", 105),
     ("F#2", 15), ("B2", 60), ("F#3", 15), ("E3", 15), ("D3", 15), ("B2", 15),
     ("C3", 105), ("C3", 15), ("B2", 30), ("B2", 75), ("B2", 15), ("A2", 120),
     ("G2", 90), ("D3", 15), ("E3", 15), ("D3", 105), ("D3", 15), ("D2", 120),
 ]
 
-# indice 0 = pizzaria, indice 1 = minigame -- e o que troca_musica (em
-# jogo.s) espera receber em A pra trocar de musica
+# --------------------------------------------- musica 2: o desafio (Grieg)
+# "Na Gruta do Rei da Montanha" (Peer Gynt). A graca da peca e o acelerando:
+# comeca pisando de mansinho e termina em correria. Aqui quem acelera e a
+# barra de pontos (ver VEL_JOGO mais abaixo), entao a partitura em si e
+# escrita num andamento so, e as duracoes nao sao em quadros e sim em
+# "passos" do motor -- no andamento base (VEL_BASE_MUSICA) um passo e um
+# quadro, e o motor da mais passos por quadro conforme ela pontua.
+#
+# O tema (si menor), 4 compassos de colcheias:
+#   B C# D E F# D F#- | E# C# E#- E C E- | B C# D E F# D F# B | A F# D F# A--
+# Tocado duas vezes em si, uma vez uma quinta acima (em fa#, como a peca
+# faz ao crescer) e de novo em si pra fechar o laco.
+#
+# Tudo staccato ("molto marcato"): cada nota e seguida de uma pausa curta.
+# Onda quadrada solta, sem pausa, vira um orgao zumbindo -- e o silencio
+# entre as notas que faz soar "pe ante pe".
+#
+# canal 0: o tema, na oitava 4 (brilha por cima de tudo)
+# canal 1: o "tchk" no contratempo, uma nota do acorde em cada colcheia
+#          fraca -- da o balanco de marcha e diz qual e a harmonia
+# canal 2: baixo de pizzicato, fundamental e quinta alternando na seminima.
+#          No 2o compasso ele desce cromatico junto com o tema (C#->C), que
+#          e o que deixa a peca com cara de "tem alguma coisa espreitando"
+C8 = 16               # colcheia, em passos -- 16 quadros no andamento base
+                      # (seminima a ~112 BPM); no maximo vira 8 (~225 BPM)
+
+def staccato(nota, colcheias, fracao):
+    """Uma nota seguida de pausa, somando exatamente `colcheias` colcheias."""
+    total = C8 * colcheias
+    som = round(total * fracao)
+    return [(nota, som), ("P", total - som)]
+
+TEMA = [   # (nota, colcheias) -- em si menor
+    ["B4", "C#5", "D5", "E5", "F#5", "D5", ("F#5", 2)],
+    ["E#5", "C#5", ("E#5", 2), "E5", "C5", ("E5", 2)],
+    ["B4", "C#5", "D5", "E5", "F#5", "D5", "F#5", "B5"],
+    ["A5", "F#5", "D5", "F#5", ("A5", 4)],
+]
+
+# harmonia de cada meio compasso: (fundamental, quinta, nota do contratempo)
+ACORDES = [
+    [("B2", "F#2", "D4"), ("B2", "F#2", "F#4")],   # si menor
+    [("C#3", "G#2", "E#4"), ("C3", "G2", "E4")],   # o deslize cromatico
+    [("B2", "F#2", "D4"), ("B2", "F#2", "F#4")],
+    [("D3", "A2", "F#4"), ("D3", "A2", "A4")],     # re maior, respiro
+]
+
+ENARMONICO = {"E#": "F", "B#": "C", "Cb": "B", "Fb": "E"}
+
+def transpoe(nome, semitons):
+    """'F#5', +7 -> 'C#6'. Aceita E#/B# (grafia da partitura) e devolve so
+    nomes que existem em NOMES."""
+    if nome == "P":
+        return nome
+    n, oitava = nome[:-1], int(nome[-1])
+    if n in ENARMONICO:
+        oitava += {"E#": 0, "B#": 1, "Cb": -1, "Fb": 0}[n]
+        n = ENARMONICO[n]
+    i = oitava * 12 + NOMES.index(n) + semitons
+    return f"{NOMES[i % 12]}{i // 12}"
+
+def tema_grieg(semitons):
+    """Os 4 compassos do tema, ja nos tres canais, transpostos."""
+    c0, c1, c2 = [], [], []
+    for compasso, acordes in zip(TEMA, ACORDES):
+        for item in compasso:
+            nota, dur = item if isinstance(item, tuple) else (item, 1)
+            c0 += staccato(transpoe(nota, semitons), dur, 0.7 if dur == 1 else 0.8)
+        for fund, quinta, alto in acordes:
+            # o baixo desce uma quarta em vez de subir uma quinta, pra ficar
+            # dentro da faixa do motor (C2 pra cima) mesmo transposto
+            grave = semitons - 12 if semitons > 0 else semitons
+            for b in (fund, quinta):
+                c2 += staccato(transpoe(b, grave), 2, 0.4)
+                c1 += [("P", C8)] + staccato(transpoe(alto, semitons), 1, 0.5)
+    return c0, c1, c2
+
+_partes = [tema_grieg(0), tema_grieg(0), tema_grieg(7), tema_grieg(0)]
+canal0_grieg, canal1_grieg, canal2_grieg = ([n for p in _partes for n in p[c]]
+                                            for c in range(3))
+
+# indice 0 = pizzaria, 1 = refrao de "Amanda" (carro em diante), 2 = o
+# minigame -- e o que troca_musica (em jogo.s) espera receber em A; os
+# nomes MUSICA_* sao emitidos no .inc pra ninguem escrever o numero a mao
 MUSICAS = [
     [canal0_cena, canal1_cena, canal2_cena],
-    [canal0_jogo, canal1_jogo, canal2_jogo],
+    [canal0_refrao, canal1_refrao, canal2_refrao],
+    [canal0_grieg, canal1_grieg, canal2_grieg],
 ]
+NOMES_MUSICAS = ["MUSICA_PIZZARIA", "MUSICA_REFRAO", "MUSICA_JOGO"]
+
+# ------------------------------------------------ andamento do minigame
+# O motor soma `musica_vel` a um acumulador todo quadro e da um passo na
+# partitura a cada VEL_BASE_MUSICA acumulado (ver musica_tick). Com
+# VEL_BASE_MUSICA = 16, velocidade 16 e um passo por quadro -- exatamente o
+# motor antigo, entao as outras musicas nao mudam nada. No minigame a
+# velocidade sai desta tabela, indexada pelos pontos: vai de 1x (barra
+# vazia) ate 2x (faltando uma pizza pra vencer). Na vitoria a musica pausa,
+# entao o ultimo degrau so completa a tabela.
+from make_jogo import PONTOS_MIN
+VEL_BASE_MUSICA = 16
+VEL_JOGO = [VEL_BASE_MUSICA + round(VEL_BASE_MUSICA * min(p, PONTOS_MIN - 1)
+                                    / (PONTOS_MIN - 1))
+            for p in range(PONTOS_MIN + 1)]
 
 # --------------------------------------------------- efeito: o "plin"
 # Toca no menu quando aperta START, antes de entrar na pizzaria -- uma nota
@@ -141,8 +240,9 @@ PLIN = "A5"
 # cada nota e um decaimento automatico do APU, disparado com um atraso
 # entre uma e outra (o motor de 3 canais pausa nesse instante, ver
 # musica_para, entao os dois pulsos ficam livres). Descendo B3-G3-E3-D3,
-# em Mi menor -- a mesma tonalidade do refrao de "Amanda" (canal2_jogo
-# comeca e termina em sol/re), pra nao soar destoante do resto do jogo.
+# em Mi menor -- a mesma tonalidade do refrao de "Amanda" (canal2_refrao
+# comeca e termina em sol/re), e perto o bastante do si menor do Grieg que
+# acabou de pausar pra nao soar destoante.
 TRISTE = ["B3", "G3", "E3", "D3"]
 
 # --------------------------------------------------- efeito: a vitoria
@@ -177,6 +277,9 @@ def main():
         saida.append(f"TRISTE_NOTA{i+1} = {indice(nome)}    ; nota {i+1} da derrota ({nome})")
     for i, nome in enumerate(FELIZ):
         saida.append(f"FELIZ_NOTA{i+1} = {indice(nome)}    ; nota {i+1} da vitoria ({nome})")
+    for i, nome in enumerate(NOMES_MUSICAS):
+        saida.append(f"{nome} = {i}")
+    saida.append(f"VEL_BASE_MUSICA = {VEL_BASE_MUSICA}    ; um passo da partitura por quadro")
     saida.append("")
 
     per = [0] * (N_NOTAS + 1)
@@ -205,7 +308,13 @@ def main():
             saida.append("")
 
     saida += ["fluxo_lo:", "    .byte " + ", ".join(f"<{r}" for r in rotulos), "",
-              "fluxo_hi:", "    .byte " + ", ".join(f">{r}" for r in rotulos), ""]
+              "fluxo_hi:", "    .byte " + ", ".join(f">{r}" for r in rotulos), "",
+              "; onde cada musica comeca em fluxo_lo/hi (3 canais cada)",
+              "musica_offset:",
+              "    .byte " + ", ".join(str(3 * m) for m in range(len(MUSICAS))), "",
+              "; velocidade da musica do minigame, indexada por jogo_pontos",
+              "vel_jogo:",
+              "    .byte " + ", ".join(str(v) for v in VEL_JOGO), ""]
 
     destino = sys.argv[1] if len(sys.argv) > 1 else "build/musica.inc"
     open(destino, "w").write("\n".join(saida))

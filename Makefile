@@ -24,7 +24,7 @@ build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc: tools/make_jogo
 	@mkdir -p build
 	python3 tools/make_jogo.py
 
-build/musica.inc: tools/make_song.py
+build/musica.inc: tools/make_song.py tools/make_jogo.py
 	@mkdir -p build
 	python3 tools/make_song.py build/musica.inc
 

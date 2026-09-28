@@ -265,6 +265,9 @@ ch_wait:     .res 3
 ch_note:     .res 3
 ch_vol:      .res 3
 ch_atk:      .res 3
+musica_vel:  .res 1         ; passos da partitura por quadro, x VEL_BASE_MUSICA
+musica_acc:  .res 1         ; fracao de passo que sobrou do quadro anterior
+musica_passos: .res 1
 
 .segment "OAM"
 oam:         .res 256
@@ -1058,7 +1061,7 @@ carrega_cena:
     lda #BANCO_CENA
     jsr troca_banco
 
-    lda #$00                ; a pizzaria comeca a tocar a introducao
+    lda #MUSICA_PIZZARIA    ; a pizzaria comeca a tocar a introducao
     jsr troca_musica
 
     bit PPUSTATUS           ; cenario -> pattern table 1 (fundo)
@@ -1138,8 +1141,8 @@ carrega_jogo:
     lda #BANCO_JOGO
     jsr troca_banco
 
-    lda #$01                ; o minigame toca o refrao de "Amanda"
-    jsr troca_musica
+    lda #MUSICA_JOGO        ; o minigame toca o Grieg -- o refrao de "Amanda"
+    jsr troca_musica        ; fica guardado pra depois que ela vencer
 
     bit PPUSTATUS            ; ceu e chao -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -1250,8 +1253,8 @@ carrega_carro:
     lda #BANCO_CARRO
     jsr troca_banco
 
-    lda #$01                 ; o refrao de "Amanda" recomeca do inicio e segue
-    jsr troca_musica         ; ate o fim do jogo (as fotos nao trocam a musica)
+    lda #MUSICA_REFRAO       ; o refrao de "Amanda" estreia aqui e segue ate
+    jsr troca_musica         ; o fim do jogo (as fotos nao trocam a musica)
 
     bit PPUSTATUS            ; ceu/predios/rua -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -2087,6 +2090,10 @@ restaura_atributos:
 ;  entende que e um minigame.
 ; ==========================================================================
 atualiza_jogo:
+    ldx jogo_pontos           ; a musica acelera conforme a barra enche (so
+    lda vel_jogo, x           ; 1 byte -- o NMI nunca le metade dele)
+    sta musica_vel
+
     lda jogo_troca            ; checa_vitoria/checa_derrota so avisam --
     beq @sem_troca             ; trocar de nametable e feito aqui, no topo
     lda #$00                   ; do laco principal, nunca de dentro do laco
@@ -2184,7 +2191,7 @@ reinicia_jogo:
     sta jogo_espera
     lda #VEL_BASE
     sta jogo_vel
-    lda #$01                   ; retoma o refrao de onde musica_para deixou
+    lda #$01                   ; retoma o Grieg de onde musica_para deixou
     sta musica_liga             ; (so 1 byte -- musica_para nao tocou em
     jmp mostra_jogando          ; ch_ptr/ch_wait/ch_vol, nao precisa reiniciar)
 
@@ -2375,7 +2382,7 @@ checa_vitoria:
     sta pz_ativa+1               ; por cima da tela de vitoria/derrota
     sta pz_ativa+2
 
-    jsr musica_para              ; pausa o refrao, mesmo esquema da derrota
+    jsr musica_para              ; pausa o Grieg, mesmo esquema da derrota
     lda #$01
     sta vitoria_tocando
     lda #VITORIA_ESPERA_INICIAL
@@ -2422,7 +2429,7 @@ checa_derrota:
     sta pz_ativa+1
     sta pz_ativa+2
 
-    jsr musica_para             ; pausa o refrao -- so registrador/A, seguro
+    jsr musica_para             ; pausa o Grieg -- so registrador/A, seguro
     lda #$01                    ; chamar daqui de dentro do laco de pizzas
     sta derrota_tocando
     lda #DERROTA_ESPERA_INICIAL
@@ -2822,6 +2829,10 @@ troca_musica:
     inx
     cpx #$03
     bne @canal
+    lda #VEL_BASE_MUSICA     ; toda musica comeca no andamento escrito; so o
+    sta musica_vel           ; minigame acelera (ver atualiza_jogo)
+    lda #$00
+    sta musica_acc
     lda #$01
     sta musica_liga
     rts
@@ -2939,7 +2950,7 @@ toca_triste4:
 ;  ver FELIZ em tools/make_song.py), disparada por checa_vitoria + o
 ;  contador feliz_espera (ver atualiza_jogo). Duty 50% e crescendo de
 ;  volume (ao contrario do diminuendo triste) pra soar animado, tipo um
-;  "ta-da" -- e o mesmo pulso 2 (o refrao ja pausou nesse instante, ver
+;  "ta-da" -- e o mesmo pulso 2 (o Grieg ja pausou nesse instante, ver
 ;  musica_para). Indice 9 no contador de duracao = 8 quadros: mais curta
 ;  e seca que a triste (indice 14), pra soar alegre/pontuada em vez de
 ;  choroza.
@@ -2984,19 +2995,51 @@ toca_feliz4:
     sta $4007
     rts
 
+; --------------------------------------------------------------------------
+;  Um quadro de musica. A partitura anda em "passos", nao em quadros: o
+;  acumulador ganha musica_vel por quadro e cada VEL_BASE_MUSICA vira um
+;  passo (0, 1 ou 2 por quadro). Na velocidade base e sempre 1 -- o motor
+;  antigo, quadro a quadro. Os tres canais andam os MESMOS passos no mesmo
+;  quadro, entao acelerar nunca desencontra um canal do outro.
+;  O volume continua decaindo por quadro, nao por passo: e o som do
+;  instrumento, nao o ritmo.
+; --------------------------------------------------------------------------
 musica_tick:
     lda musica_liga
     beq @fim
+    lda musica_acc
+    clc
+    adc musica_vel
+    tay
+    and #(VEL_BASE_MUSICA - 1)
+    sta musica_acc
+    tya
+    lsr
+    lsr
+    lsr
+    lsr
+    .assert VEL_BASE_MUSICA = 16, error, "musica_tick divide por 16 com 4 lsr"
+    sta musica_passos
+    beq @volume
+@passo:
     ldx #$00
 @canal:
     dec ch_wait, x
-    bne @volume
+    bne @proximo
     jsr proxima_nota
-@volume:
-    jsr aplica_volume
+@proximo:
     inx
     cpx #$03
     bne @canal
+    dec musica_passos
+    bne @passo
+@volume:
+    ldx #$00
+@vol_canal:
+    jsr aplica_volume
+    inx
+    cpx #$03
+    bne @vol_canal
 @fim:
     rts
 
@@ -3111,7 +3154,6 @@ aplica_volume:
 ;  Dados
 ; ==========================================================================
 duty_canal:  .byte $40, $80, $00
-musica_offset: .byte 0, 3     ; onde cada musica comeca em fluxo_lo/hi (3 canais cada)
 ; Amanda: 8 tiles, coluna esquerda de cima a baixo e depois a direita
 ama_dx:      .byte 0, 0, 0, 0,  8, 8, 8, 8
 ama_dx_esp:  .byte 8, 8, 8, 8,  0, 0, 0, 0

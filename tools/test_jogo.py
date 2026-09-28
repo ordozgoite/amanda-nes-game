@@ -465,6 +465,11 @@ def main():
           v.bus.oam[7] == x0, f"{x0} -> {v.bus.oam[7]}")
     check("o carro toca o refrao de \"Amanda\" (a musica da parte final)",
           v.bus.ram[sym["musica_liga"]] == 1)
+    base = v.bus.ram[sym["ch_base_lo"]] | (v.bus.ram[sym["ch_base_hi"]] << 8)
+    check("e e o refrao mesmo, nao o Grieg do minigame",
+          base == sym["musica1_canal0"], f"${base:04X}")
+    check("no andamento escrito (o minigame acelerado nao vaza pro carro)",
+          v.bus.ram[sym["musica_vel"]] == 16, v.bus.ram[sym["musica_vel"]])
 
     print("\n== 9c. O carro: ceu parado em cima, rua rolando embaixo ==")
     car_inc = open("build/carro.inc").read()

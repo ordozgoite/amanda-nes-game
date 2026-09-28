@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Grava o audio do minigame: a musica do refrao mais os dois efeitos --
-pegar a pizza e deixar ela cair no chao."""
+"""Grava o audio do minigame: o Grieg, os dois efeitos (pegar a pizza e
+deixar ela cair no chao) e depois a musica acelerando conforme a barra
+enche -- a pontuacao e forcada na RAM, degrau por degrau."""
 import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
@@ -28,7 +29,7 @@ anda(n=200)                          # a fala dela inteira
 anda(B, 1)
 anda(n=20)                           # fecha a caixa dela -- carrega o minigame
 
-anda(n=60, gravando=True)            # um instante do refrao, sem efeito
+anda(n=60, gravando=True)            # um instante do tema, sem efeito
 
 for _ in range(200):                 # pega a primeira pizza que nascer
     nes.frame()
@@ -40,6 +41,13 @@ anda(n=200, gravando=True)           # ate ela pegar -- grava o som_come
 
 nes.bus.ram[sym["player_x"]] = 8     # bem longe -- a proxima pizza cai no chao
 anda(n=200, gravando=True)           # ate errar -- grava o som_cai
+
+for pontos in (0, 4, 8, 11, 14):     # a barra enchendo: ~5 s em cada degrau
+    for _ in range(300):
+        nes.bus.ram[sym["jogo_pontos"]] = pontos
+        nes.bus.ram[sym["jogo_erros"]] = 0
+        nes.bus.ram[sym["player_x"]] = 0 if nes.bus.ram[sym["pz_x"]] > 128 else 240
+        anda(n=1, gravando=True)
 
 dur, pico = gravar_wav("build/minigame.wav", som)
 print(f"build/minigame.wav  --  {dur:.1f} s, pico {pico:.3f}")

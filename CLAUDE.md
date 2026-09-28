@@ -258,6 +258,12 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   meio dele; `screenshot.py` desenha linha a linha a partir disso. O tempo
   e aproximado (240 linhas em 20000 ciclos, nao 113,67 por linha como no
   console) -- serve pra ordem das coisas, nao pra contar ciclo.
+- **Numa pausa o motor de som nao mexe no periodo** -- so zera o volume. O
+  registrador continua com o periodo da ultima nota, e num canal que
+  COMECA com pausa (o contratempo do Grieg) isso e a ultima nota do laco
+  ANTERIOR. O `periodos_esperados` do `test_musica.py` modelava a 1a
+  passada (periodo zero antes da 1a nota) e acusava erro bem na virada do
+  laco, com o motor certo.
 - **A CHR da pizzaria esta cheia (256), a do carro nao.** Os acentos da
   conversa do carro (Ã, É) so existem la, logo abaixo de `DLG_BASE`
   (`ACENTOS_CARRO` em `make_scene.py`); o resto da fonte e da moldura usa
@@ -284,11 +290,16 @@ Minigame das pizzas caindo, com fluxo completo:
   ate apertar B.
 - **jogando** (`fase = 0`): HUD visual, nao numerico -- barra de `PONTOS_MIN`
   segmentos e `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que
-  overscan de TV de tubo corta).
+  overscan de TV de tubo corta). A musica e "Na Gruta do Rei da Montanha"
+  (Grieg, `MUSICA_JOGO` em `make_song.py`), que acelera conforme a barra
+  enche: de 1x (vazia) a 2x (faltando uma pizza), pela tabela `VEL_JOGO`.
+  O motor de som anda em "passos", nao em quadros: `musica_vel` (16 = um
+  passo por quadro, o andamento escrito) e somada num acumulador todo
+  quadro. As outras musicas ficam em 16 (`troca_musica` reseta).
 - **vitoria** (`fase = 1`): retrato grande e feliz (mesma tecnica de "zoom"
   da derrota, sorriso em vez de choro -- ver `RETRATO_FELIZ`) com uma
   fraseszinha feliz de 4 notas (G3-B3-D4-G4, uma vez so; ver
-  `FELIZ`/`toca_feliz1..4`), pausando o refrao do minigame do mesmo jeito
+  `FELIZ`/`toca_feliz1..4`), pausando o Grieg do minigame do mesmo jeito
   que a derrota pausa. "PARABENS! APERTE B PRA CONTINUAR" -- B leva pra
   cena do carro (`carrega_carro`), nao volta mais a jogar.
 - **derrota** (`fase = 2`): sprite dela some da tela, so fica um retrato
@@ -331,8 +342,8 @@ sepia pontilhada com legenda (`FOTOS` no gerador: arquivo, recorte,
 legenda). O gerador escolhe o banco (4-6) e emite as tabelas em
 `build/fotos.inc`. B passa pra proxima; depois da ultima, volta pro menu
 (provisorio, ate existir a cena final). A musica do carro em diante e o
-refrao de "Amanda", que continua tocando sem reiniciar entre as fotos; por
-enquanto o minigame ainda usa o mesmo refrao.
+refrao de "Amanda" -- que so estreia ali, depois do minigame -- e continua
+tocando sem reiniciar entre as fotos.
 
 ## Falta
 
@@ -343,5 +354,4 @@ enquanto o minigame ainda usa o mesmo refrao.
   contraste, `ceu_noite` pra trocar ceu de dia por ceu estrelado.
 - **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
   com "FELIZ 2 ANOS DE NAMORO".
-- **Musica nova pro minigame** (o refrao passa a ser so da parte final).
 - Transicao (fade) entre carro e fotos, se ficar seco.
