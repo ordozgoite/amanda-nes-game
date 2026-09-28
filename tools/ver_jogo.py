@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
 from screenshot import render
+import robo
 
 BTN_START, BTN_B, BTN_RIGHT = 0x08, 0x02, 0x80
 ESPERA_MENU = 70   # o respiro pro plin/eco, antes da cena carregar (ver jogo.s)
@@ -85,12 +86,14 @@ for _ in range(120):              # deixa uma pizza nascer e cair um pouco
 render(nes).save("build/jogo-8-minigame-caindo.png")
 print("build/jogo-8-minigame-caindo.png")
 
-for _ in range(3000):             # pega pizzas ate ganhar
-    nes.frame()
-    if nes.bus.ram[sym["pz_ativa"]]:
-        nes.bus.ram[sym["player_x"]] = nes.bus.ram[sym["pz_x"]]
-    if nes.bus.ram[sym["jogo_fase"]] == 1:
-        break
+# o robo joga ate a primeira pimenta aparecer (captura dela caindo) e
+# depois ate ganhar
+robo.joga(nes, sym, 6000, ate=lambda n: any(
+    n.bus.ram[sym["pz_ativa"] + i] and n.bus.ram[sym["pz_tipo"] + i]
+    and n.bus.ram[sym["pz_y"] + i] > 110 for i in range(3)))
+render(nes).save("build/jogo-8b-minigame-pimenta.png")
+print("build/jogo-8b-minigame-pimenta.png  pontos =", nes.bus.ram[sym["jogo_pontos"]])
+robo.joga(nes, sym, 12000, ate=lambda n: n.bus.ram[sym["jogo_fase"]] == 1)
 for _ in range(60):                # a fraseszinha feliz toca inteira
     nes.frame()
 render(nes).save("build/jogo-9-vitoria.png")

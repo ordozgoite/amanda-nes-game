@@ -9,8 +9,9 @@ Mesma tecnica do make_scene.py: canvas 256x240 com indice de cor 0-3,
 fatiado em tiles de 8x8 e paleta por bloco de 16x16. Mas aqui sao QUATRO
 telas (nao uma so): a de jogo em si, e mais tres telas de aviso que o
 assembly troca por cima dela --
-  - intro:   "PEGUE N PIZZAS!", antes da primeira pizza cair (senao quem
-             joga pela primeira vez nao entende que e um minigame)
+  - intro:   "PEGUE N PIZZAS!" / "DESVIE DAS PIMENTAS!", antes da primeira
+             pizza cair (senao quem joga pela primeira vez nao entende que
+             e um minigame)
   - vitoria: "PARABENS!", quando alcanca PONTOS_MIN
   - derrota: retrato triste da Amanda (um "zoom" na cabeca dela, grande
              demais pro sprite normal -- por isso vira desenho de fundo,
@@ -32,8 +33,49 @@ CHAO_Y = 192   # tem que bater com CHAO_Y em src/jogo.s
 # checa_vitoria/checa_derrota em src/jogo.s leem essas duas daqui (jogo.inc)
 # em vez de duplicar o numero a mao -- e o texto da intro/vitoria tambem
 # precisa saber PONTOS_MIN pra escrever "PEGUE N PIZZAS!" certo.
-PONTOS_MIN = 15
+PONTOS_MIN = 30
 ERROS_MAX  = 5
+
+# A barra de pontos vale DUAS pizzas por tile (vazio / meio / cheio): um
+# tile por pizza nao cabe -- a barra comeca na coluna 8 e 30 tiles passariam
+# da borda da tela (e a TV de tubo ja corta as ultimas colunas).
+assert PONTOS_MIN % 2 == 0, "a barra usa meio tile por pizza"
+BARRA_TILES = PONTOS_MIN // 2
+assert 8 + BARRA_TILES <= 30, "a barra passaria da area segura da tela"
+
+# ------------------------------------------------ a curva de dificuldade
+# Tudo anda junto com a FRACAO da barra (igual a musica, ver VEL_JOGO em
+# make_song.py), nao com o numero bruto de pontos -- o jeito antigo
+# (pontos/4) batia no teto de velocidade com 8 pizzas e dali em diante o
+# jogo ficava igual ate o fim. O assembly so indexa estas tabelas com
+# jogo_pontos (0..PONTOS_MIN).
+ESPERA_INI, ESPERA_FIM = 90, 64   # quadros entre um objeto e o proximo
+VEL_INI, VEL_FIM       = 16, 48   # queda em 1/16 de pixel por quadro (1 -> 3 px)
+SALTO_MAX              = 80       # distancia maxima entre uma pizza e a anterior
+PIMENTA_DESDE          = 6        # antes disso so cai pizza: primeiro aprende a pegar
+PIMENTA_CHANCE_INI     = 0.15     # chance de sair pimenta, logo que comecam...
+PIMENTA_CHANCE_FIM     = 0.35     # ...e no fim da barra
+
+# A Amanda anda 1 pixel por quadro, e duas pizzas seguidas chegam no chao
+# `espera` quadros uma depois da outra -- entao a distancia entre elas nao
+# pode passar de `espera` (menos uma folga pra ela reagir), senao a pizza
+# fica fisicamente impossivel de alcancar. Quando a espera encurta, o salto
+# encurta junto.
+FOLGA_REACAO = 12
+
+def _interp(a, b, p):
+    return a + (b - a) * p / PONTOS_MIN
+
+ESPERA_TAB  = [round(_interp(ESPERA_INI, ESPERA_FIM, p)) for p in range(PONTOS_MIN + 1)]
+VEL_TAB     = [round(_interp(VEL_INI, VEL_FIM, p)) for p in range(PONTOS_MIN + 1)]
+SALTO_TAB   = [min(SALTO_MAX, e - FOLGA_REACAO) for e in ESPERA_TAB]
+# chance em 1/256 (o assembly compara com um byte aleatorio)
+PIMENTA_TAB = [0 if p < PIMENTA_DESDE else
+               round(256 * (PIMENTA_CHANCE_INI + (PIMENTA_CHANCE_FIM - PIMENTA_CHANCE_INI)
+                            * (p - PIMENTA_DESDE) / (PONTOS_MIN - PIMENTA_DESDE)))
+               for p in range(PONTOS_MIN + 1)]
+assert max(VEL_TAB) + 15 < 256 and max(PIMENTA_TAB) < 256
+assert all(s > 0 for s in SALTO_TAB)
 
 PALETAS = [
     [0x0F, 0x06, 0x16, 0x30],   # 0 faixa vermelha do topo (titulo + HUD)
@@ -203,12 +245,34 @@ def desenhar_jogando():
     texto("VIDAS", 8, 25, 3)
     return capturar()
 
+# A intro mostra uma pizza e uma pimenta de verdade (sprites, na paleta
+# delas -- o fundo nao tem o vermelho/laranja certo nessa faixa) do lado
+# esquerdo das linhas que falam de cada uma: ela nunca viu a pimenta antes,
+# e "PIMENTA" escrito sozinho nao diz qual objeto e. O assembly so copia
+# as posicoes daqui (INTRO_* em jogo.inc).
+INTRO_PIZZAS   = f"PEGUE {PONTOS_MIN} PIZZAS!"
+INTRO_PIZZAS_Y = 82
+INTRO_PIMENTA  = "DESVIE DAS PIMENTAS!"
+INTRO_PIMENTA_Y = 114
+ICONE_RESPIRO  = 6               # pixels entre o icone e a primeira letra
+
+def x_do_texto(s):
+    return (W - len(s) * 6) // 2
+
+INTRO_PIZZA_X   = x_do_texto(INTRO_PIZZAS) - ICONE_RESPIRO - 16
+INTRO_PIMENTA_X = x_do_texto(INTRO_PIMENTA) - ICONE_RESPIRO - 8
+# o sprite aparece uma linha abaixo do y da OAM, por isso o -1; a pimenta
+# (16 de altura) fica centrada nas letras (7 de altura)
+INTRO_PIZZA_OAM_Y   = INTRO_PIZZAS_Y - 1
+INTRO_PIMENTA_OAM_Y = INTRO_PIMENTA_Y - 4 - 1
+
 def desenhar_intro():
     novo_canvas()
     fundo_comum("PIZZA CREK")
-    texto_centro(f"PEGUE {PONTOS_MIN} PIZZAS!", 90, 3)
-    texto_centro("NAO DEIXE CAIR!", 106, 3)
-    texto_centro("APERTE B PRA COMECAR", 130, 3)
+    texto_centro(INTRO_PIZZAS, INTRO_PIZZAS_Y, 3)
+    texto_centro("NAO DEIXE CAIR!", 98, 3)
+    texto_centro(INTRO_PIMENTA, INTRO_PIMENTA_Y, 3)
+    texto_centro("APERTE B PRA COMECAR", 138, 3)
     return capturar()
 
 def desenhar_vitoria():
@@ -236,9 +300,11 @@ def capturar():
 # desenha_vidas). Ficam num intervalo reservado no fim da lista de tiles,
 # igual o DIG_BASE de antes -- endereco fixo, nao sujeito a deduplicacao.
 
-def glifo_barra(cheia):
-    cor = '3' if cheia else '1'
-    linhas = [cor * 8] * 6 + ["11111111"] * 2
+def glifo_barra(cheias):
+    # cheias = quantas das 2 pizzas desse tile ja foram pegas (0, 1 ou 2):
+    # cada pizza acende a metade do tile, da esquerda pra direita
+    cor = '3' * (4 * cheias) + '1' * (8 - 4 * cheias)
+    linhas = [cor] * 6 + ["11111111"] * 2
     return encode_tile(linhas)
 
 def glifo_vida(cheia):
@@ -252,10 +318,11 @@ def glifo_vida(cheia):
     return encode_tile(rows)
 
 UI_TILES = {
-    "BARRA_VAZIA": glifo_barra(False),
-    "BARRA_CHEIA": glifo_barra(True),
+    "BARRA_VAZIA": glifo_barra(0),
+    "BARRA_CHEIA": glifo_barra(2),
     "VIDA_CHEIA":  glifo_vida(True),
     "VIDA_VAZIA":  glifo_vida(False),
+    "BARRA_MEIA":  glifo_barra(1),
 }
 
 # ================================================================== saida
@@ -314,7 +381,8 @@ def main():
     print(f"tiles unicos (4 telas): {len(tiles)} / 256")
 
     UI_BASE = len(tiles)
-    ui_ordem = ["BARRA_VAZIA", "BARRA_CHEIA", "VIDA_CHEIA", "VIDA_VAZIA"]
+    ui_ordem = ["BARRA_VAZIA", "BARRA_CHEIA", "VIDA_CHEIA", "VIDA_VAZIA",
+                "BARRA_MEIA"]
     assert UI_BASE + len(ui_ordem) <= 256, \
         f"cenario do jogo com {UI_BASE} tiles + {len(ui_ordem)} do HUD estoura 256"
 
@@ -357,7 +425,18 @@ def main():
               f"PAGINAS_JOGO = {paginas}",
               f"PONTOS_MIN   = {PONTOS_MIN}",
               f"ERROS_MAX    = {ERROS_MAX}",
-              f"UI_BASE      = ${UI_BASE:02X}", ""]
+              f"BARRA_TILES  = {BARRA_TILES}",
+              f"UI_BASE      = ${UI_BASE:02X}",
+              f"PIMENTA_DESDE = {PIMENTA_DESDE}",
+              f"INTRO_PIZZA_X       = {INTRO_PIZZA_X}",
+              f"INTRO_PIZZA_OAM_Y   = {INTRO_PIZZA_OAM_Y}",
+              f"INTRO_PIMENTA_X     = {INTRO_PIMENTA_X}",
+              f"INTRO_PIMENTA_OAM_Y = {INTRO_PIMENTA_OAM_Y}", "",
+              "; a curva de dificuldade, indexada por jogo_pontos (0..PONTOS_MIN)",
+              "espera_tab:  .byte " + ", ".join(map(str, ESPERA_TAB)),
+              "vel_tab:     .byte " + ", ".join(map(str, VEL_TAB)),
+              "salto_tab:   .byte " + ", ".join(map(str, SALTO_TAB)),
+              "pimenta_tab: .byte " + ", ".join(map(str, PIMENTA_TAB)), ""]
     open("build/jogo.inc", "w").write("\n".join(linhas))
     print(f"build/jogo.inc")
 

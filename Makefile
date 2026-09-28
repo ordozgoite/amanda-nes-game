@@ -1,5 +1,5 @@
 JOGO  = jogo.nes
-DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin \
+DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin build/sprites.inc \
         build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc \
         build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc \
         build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam \
@@ -12,7 +12,7 @@ build/chr_menu.bin: tools/make_chr.py
 	@mkdir -p build
 	python3 tools/make_chr.py
 
-build/chr_sprites.bin: tools/make_sprites.py tools/make_chr.py
+build/chr_sprites.bin build/sprites.inc: tools/make_sprites.py tools/make_chr.py
 	@mkdir -p build
 	python3 tools/make_sprites.py build/chr_sprites.bin
 

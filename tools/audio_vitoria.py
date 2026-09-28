@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
 from apu import APU, gravar_wav
+import robo
 
 sym = load_labels("build/jogo-labels.txt")
 B, START, RIGHT = 0x02, 0x08, 0x80
@@ -32,11 +33,9 @@ anda(n=10)
 
 anda(n=60, gravando=True)             # um instante do refrao, antes de ganhar
 
-for _ in range(3000):
-    nes.frame()
+for _ in range(12000):                 # o robo joga ate ganhar
+    nes.frame(robo.botao(nes, sym))
     som.extend(apu.quadro(nes.bus.apu))
-    if nes.bus.ram[sym["pz_ativa"]]:
-        nes.bus.ram[sym["player_x"]] = nes.bus.ram[sym["pz_x"]]
     if nes.bus.ram[sym["jogo_fase"]] == 1:
         break
 anda(n=90, gravando=True)             # a fraseszinha feliz inteira

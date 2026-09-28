@@ -6,6 +6,7 @@ import re
 import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels, check, FAILS
+import robo
 
 ROM = "jogo.nes"
 BTN_B, BTN_START, BTN_LEFT, BTN_RIGHT = 0x02, 0x08, 0x40, 0x80
@@ -339,6 +340,13 @@ def main():
           d.bus.ram[sym["jogo_fase"]] == 0, f"fase={d.bus.ram[sym['jogo_fase']]}")
     check("placar comeca zerado",
           d.bus.ram[sym["jogo_pontos"]] == 0 and d.bus.ram[sym["jogo_erros"]] == 0)
+    sprites_inc = open("build/sprites.inc").read()
+    TILE_PIMENTA = int(re.search(r"TILE_PIMENTA\s*=\s*(\d+)", sprites_inc).group(1))
+    PAGINAS_SPRITES = int(re.search(r"PAGINAS_SPRITES\s*=\s*(\d+)", sprites_inc).group(1))
+    folha = open("build/chr_sprites.bin", "rb").read()
+    check("a folha de sprites inteira foi pra CHR, com a pimenta junto",
+          bytes(d.bus.vram[0:PAGINAS_SPRITES * 256]) == folha
+          and any(folha[TILE_PIMENTA * 16:(TILE_PIMENTA + 2) * 16]))
 
     print("\n== 7. O minigame: pegar pizza ==")
     for _ in range(200):
@@ -363,19 +371,33 @@ def main():
     # e um label, so uma constante -- ver build/jogo.inc, gerado por
     # tools/make_jogo.py) -- le do arquivo em vez de hardcodar, pra nao
     # desalinhar de novo como aconteceu (211 -> 210 so nessa sessao)
-    import re
     UI_BASE = int(re.search(r"UI_BASE\s*=\s*\$([0-9A-Fa-f]+)",
                              open("build/jogo.inc").read()).group(1), 16)
     UI_BARRA_VAZIA, UI_BARRA_CHEIA = UI_BASE, UI_BASE + 1
     UI_VIDA_CHEIA, UI_VIDA_VAZIA = UI_BASE + 2, UI_BASE + 3
+    UI_BARRA_MEIA = UI_BASE + 4
     BARRA_ADDR = 0x2000 + 2*32 + 8
     VIDAS_ADDR = 0x2000 + 3*32 + 8
-    check("o primeiro segmento da barra de pontos acendeu",
-          d.bus.vram[BARRA_ADDR] == UI_BARRA_CHEIA,
+    from make_jogo import BARRA_TILES, PONTOS_MIN, SALTO_MAX, PIMENTA_DESDE
+    check("uma pizza acende MEIO segmento (cada um vale duas)",
+          d.bus.vram[BARRA_ADDR] == UI_BARRA_MEIA,
           f"tile {d.bus.vram[BARRA_ADDR]}")
     check("o resto da barra continua vazio",
-          all(d.bus.vram[BARRA_ADDR + i] == UI_BARRA_VAZIA for i in range(1, 15)),
-          [d.bus.vram[BARRA_ADDR + i] for i in range(1, 15)])
+          all(d.bus.vram[BARRA_ADDR + i] == UI_BARRA_VAZIA for i in range(1, BARRA_TILES)),
+          [d.bus.vram[BARRA_ADDR + i] for i in range(1, BARRA_TILES)])
+    # a barra em todos os estados: pontos -> tiles esperados
+    b = d.copia()
+    for pontos in (2, 3, 17, PONTOS_MIN - 1):
+        b.bus.ram[sym["jogo_pontos"]] = pontos
+        b.bus.ram[sym["placar_sujo"]] = 1
+        b.frame()
+        esperado = [UI_BARRA_CHEIA] * (pontos // 2) + [UI_BARRA_MEIA] * (pontos % 2)
+        esperado += [UI_BARRA_VAZIA] * (BARRA_TILES - len(esperado))
+        lido = list(b.bus.vram[BARRA_ADDR:BARRA_ADDR + BARRA_TILES])
+        check(f"barra com {pontos} pizzas: {pontos // 2} cheios + {pontos % 2} meio",
+              lido == esperado, lido)
+    check("e nada foi escrito depois do fim da barra",
+          b.bus.vram[BARRA_ADDR + BARRA_TILES] == d.bus.vram[BARRA_ADDR + BARRA_TILES])
 
     print("\n== 8. O minigame: errar pizza ==")
     erros0 = d.bus.ram[sym["jogo_erros"]]
@@ -400,41 +422,126 @@ def main():
     print("\n== 8b. O minigame: pizzas nao saltam de extremo a extremo ==")
     s = NES(ROM)
     entra_no_minigame(s, sym)
-    SALTO_MAX = 80   # ver SALTO_MAX em src/jogo.s -- nao e um label, so uma constante
     ativa_antes = [0, 0, 0]
-    nascimentos = []
+    nascimentos = []            # (tipo, x, pontos na hora)
     for quadro in range(6000):
-        # pega tudo que aparece, pra rodada nunca acabar por erro demais
-        for i in range(3):
-            if s.bus.ram[sym["pz_ativa"] + i]:
-                s.bus.ram[sym["player_x"]] = s.bus.ram[sym["pz_x"] + i]
-        s.frame()
+        # o robo pega tudo que aparece, pra rodada nunca acabar por erro demais
+        s.frame(robo.botao(s, sym))
         for i in range(3):
             ativa = s.bus.ram[sym["pz_ativa"] + i]
             if ativa and not ativa_antes[i]:
-                nascimentos.append((quadro, s.bus.ram[sym["pz_x"] + i]))
+                nascimentos.append((s.bus.ram[sym["pz_tipo"] + i],
+                                    s.bus.ram[sym["pz_x"] + i],
+                                    s.bus.ram[sym["jogo_pontos"]]))
             ativa_antes[i] = ativa
-        if len(nascimentos) >= 25:
+        if s.bus.ram[sym["jogo_fase"]] != 0:
             break
-    saltos = [abs(nascimentos[i][1] - nascimentos[i-1][1]) for i in range(1, len(nascimentos))]
-    check("pizzas suficientes nasceram pro teste valer", len(nascimentos) >= 15,
-          f"{len(nascimentos)} nascimentos")
+    pizzas = [x for t, x, _ in nascimentos if t == 0]
+    saltos = [abs(pizzas[i] - pizzas[i-1]) for i in range(1, len(pizzas))]
+    check("pizzas suficientes nasceram pro teste valer", len(pizzas) >= 25,
+          f"{len(pizzas)} pizzas")
     check(f"nenhum salto passou de {SALTO_MAX}px", saltos and max(saltos) <= SALTO_MAX,
-          f"maior salto: {max(saltos) if saltos else '?'}px, x's: "
-          f"{[x for _, x in nascimentos]}")
+          f"maior salto: {max(saltos) if saltos else '?'}px, x's: {pizzas}")
+
+    print("\n== 8c. O minigame: as pimentas ==")
+    pimentas = [(i, x, p) for i, (t, x, p) in enumerate(nascimentos) if t == 1]
+    check("pimentas cairam durante a rodada", len(pimentas) >= 3, len(pimentas))
+    check(f"nenhuma antes de {PIMENTA_DESDE} pizzas (primeiro ela aprende a pegar)",
+          all(p >= PIMENTA_DESDE for _, _, p in pimentas), pimentas)
+    check("nunca duas pimentas seguidas",
+          all(nascimentos[i + 1][0] == 0 for i, _, _ in pimentas if i + 1 < len(nascimentos)))
+    def pizza_depois(i):
+        return next(x for t, x, _ in nascimentos[i + 1:] if t == 0)
+    desvio = [(x + 4) - (pizza_depois(i) + 8) for i, x, _ in pimentas
+              if i + 1 < len(nascimentos)]
+    check("toda pimenta cai na coluna da proxima pizza (centro a -8..+7px)",
+          desvio and all(-8 <= d <= 7 for d in desvio), desvio)
+    check("toda pimenta nasce dentro da tela", all(8 <= x <= 240 for _, x, _ in pimentas),
+          [x for _, x, _ in pimentas])
+    # quem ignora a pimenta e vai direto pra baixo da pizza leva na cabeca --
+    # senao a pimenta seria so enfeite (a primeira versao era: caia longe de
+    # onde a Amanda ia estar, e nem um robo desatento se machucava)
+    ing = NES(ROM)
+    entra_no_minigame(ing, sym)
+    _, pimentadas = robo.joga(ing, sym, 6000, desvia=False,
+                              ate=lambda n: n.bus.ram[sym["jogo_fase"]] != 0
+                              or n.bus.ram[sym["jogo_erros"]] > 0)
+    check("ignorar as pimentas custa vida (elas atrapalham de verdade)",
+          pimentadas > 0, f"erros={ing.bus.ram[sym['jogo_erros']]}")
+
+    # uma pimenta caindo em cima dela, montada na mao
+    def so_uma_pimenta(nes, x, y):
+        for i in range(3):
+            nes.bus.ram[sym["pz_ativa"] + i] = 0
+        nes.bus.ram[sym["pz_ativa"]] = 1
+        nes.bus.ram[sym["pz_tipo"]] = 1
+        nes.bus.ram[sym["pz_x"]] = x
+        nes.bus.ram[sym["pz_y"]] = y
+        nes.bus.ram[sym["jogo_espera"]] = 250     # nada mais nasce enquanto isso
+    p = d.copia()
+    p.bus.ram[sym["jogo_pontos"]] = 10
+    so_uma_pimenta(p, p.bus.ram[sym["player_x"]] + 4, 120)
+    p.frame()
+    p.frame()                 # a OAM montada num quadro so vai pro PPU no NMI seguinte
+    y0 = p.bus.oam[32]
+    check("a pimenta e desenhada em pe: dois tiles, um embaixo do outro",
+          p.bus.oam[33] == TILE_PIMENTA and p.bus.oam[37] == TILE_PIMENTA + 1
+          and p.bus.oam[36] == y0 + 8 and p.bus.oam[35] == p.bus.oam[39],
+          list(p.bus.oam[32:40]))
+    erros0 = p.bus.ram[sym["jogo_erros"]]
+    for _ in range(120):
+        p.frame()
+        if p.bus.ram[sym["jogo_erros"]] > erros0:
+            break
+    check("encostar na pimenta custa uma vida", p.bus.ram[sym["jogo_erros"]] == erros0 + 1,
+          f"{erros0} -> {p.bus.ram[sym['jogo_erros']]}")
+    check("a pimenta some na hora", p.bus.ram[sym["pz_ativa"]] == 0)
+    check("o som da pimenta e diferente do da pizza caindo (ruido metalico)",
+          (p.bus.apu[0x0C], p.bus.apu[0x0E], p.bus.apu[0x0F]) == (0x0A, 0x86, 0x88),
+          f"${p.bus.apu[0x0C]:02X} ${p.bus.apu[0x0E]:02X} ${p.bus.apu[0x0F]:02X}")
+    check("os pontos nao mudam", p.bus.ram[sym["jogo_pontos"]] == 10)
+
+    p = d.copia()
+    p.bus.ram[sym["jogo_pontos"]] = 10
+    px = p.bus.ram[sym["player_x"]]
+    so_uma_pimenta(p, px + 60 if px < 120 else px - 60, 120)
+    erros0 = p.bus.ram[sym["jogo_erros"]]
+    for _ in range(120):
+        p.frame()
+        if not p.bus.ram[sym["pz_ativa"]]:
+            break
+    check("desviar: a pimenta chega no chao e some sem custar nada",
+          p.bus.ram[sym["pz_ativa"]] == 0 and p.bus.ram[sym["jogo_erros"]] == erros0,
+          f"ativa={p.bus.ram[sym['pz_ativa']]} erros={p.bus.ram[sym['jogo_erros']]}")
+    # raspao: a caixa da pimenta e apertada de proposito
+    p = d.copia()
+    p.bus.ram[sym["jogo_pontos"]] = 10
+    px = p.bus.ram[sym["player_x"]]
+    so_uma_pimenta(p, px + 13, 120)            # so o cabelo solto encostaria
+    erros0 = p.bus.ram[sym["jogo_erros"]]
+    for _ in range(120):
+        p.frame()
+        if not p.bus.ram[sym["pz_ativa"]]:
+            break
+    check("de raspao (na borda do sprite dela) nao doi",
+          p.bus.ram[sym["jogo_erros"]] == erros0)
 
     print("\n== 9. O minigame: vitoria ao alcancar PONTOS_MIN ==")
     v = NES(ROM)
     entra_no_minigame(v, sym)
     check("entrou no minigame", v.bus.ram[sym["tela"]] == 2)
-    for _ in range(3000):
-        v.frame()
-        if v.bus.ram[sym["pz_ativa"]]:
-            v.bus.ram[sym["player_x"]] = v.bus.ram[sym["pz_x"]]
-        if v.bus.ram[sym["jogo_fase"]] == 1:
-            break
-    check("15 pontos disparam a comemoracao", v.bus.ram[sym["jogo_fase"]] == 1,
+    # o robo anda com o controle, 1px por quadro -- ganhar sem perder vida
+    # prova que nenhuma pizza nasce longe demais e nenhuma pimenta cai
+    # num lugar impossivel de desviar
+    quadros, pimentadas = robo.joga(v, sym, 12000,
+                                    ate=lambda n: n.bus.ram[sym["jogo_fase"]] != 0)
+    check(f"{PONTOS_MIN} pontos disparam a comemoracao", v.bus.ram[sym["jogo_fase"]] == 1,
           f"pontos={v.bus.ram[sym['jogo_pontos']]} fase={v.bus.ram[sym['jogo_fase']]}")
+    check("da pra ganhar andando, sem perder nenhuma vida",
+          v.bus.ram[sym["jogo_erros"]] == 0 and pimentadas == 0,
+          f"erros={v.bus.ram[sym['jogo_erros']]} pimentadas={pimentadas}")
+    check(f"a rodada demora mais (uns 45s): {quadros / 60:.0f}s",
+          40 * 60 <= quadros <= 70 * 60, quadros)
     for _ in range(60): v.frame()          # a fraseszinha feliz toca inteira
     check("o sprite dela continua visivel na vitoria (so a derrota esconde)",
           v.bus.oam[0] < 0xEF, f"y0={v.bus.oam[0]}")

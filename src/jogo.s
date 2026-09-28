@@ -105,18 +105,22 @@ CAIXA_COL_VICTOR = 4    ; colunas 4-19
 CAIXA_COL_AMANDA = 12   ; colunas 12-27
 ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 
-; ---- minigame: pizzas caindo ----
+; ---- minigame: pizzas (e pimentas) caindo ----
 ; A faixa de captura e generosa de proposito (24px, quase a altura toda do
 ; sprite da Amanda) -- e um presente, nao um jogo de reflexo apertado.
-TILE_PIZZA      = 26     ; ver tools/make_sprites.py
-; PONTOS_MIN e ERROS_MAX vem de build/jogo.inc (tools/make_jogo.py) -- o
-; texto da intro/vitoria precisa do mesmo numero ("PEGUE 15 PIZZAS!"), entao
-; o Python e quem manda nisso agora, nao o assembly.
-ESPERA_BASE     = 90     ; quadros entre pizzas, no comeco
-ESPERA_MIN      = 30     ; nunca mais rapido que isso
-SALTO_MAX       = 80     ; o x de uma pizza fica a no maximo isso do x da anterior
-VEL_BASE        = 1      ; pixels por quadro, no comeco
-VEL_MAX         = 3
+; TILE_PIZZA/TILE_PIMENTA vem de build/sprites.inc (tools/make_sprites.py).
+; PONTOS_MIN, ERROS_MAX e a curva de dificuldade (espera_tab, vel_tab,
+; salto_tab, pimenta_tab) vem de build/jogo.inc (tools/make_jogo.py) -- o
+; texto da intro precisa do mesmo numero ("PEGUE 30 PIZZAS!"), e a regra
+; "salto <= espera" (senao a pizza fica impossivel de alcancar a pe) so da
+; pra garantir calculando as duas no mesmo lugar.
+;
+; A pimenta cai do mesmo jeito, mas e pra DESVIAR: encostou, perde vida;
+; chegou no chao, some sem contar nada. A faixa em que ela acerta vai do
+; topo da cabeca da Amanda (player_y) ate o pe dela -- a pimenta tem 16 de
+; altura, entao comeca a contar quando a ponta encosta no cabelo.
+PIMENTA_Y_MIN   = CHAO_Y - 12
+PIMENTA_Y_MAX   = CHAO_Y + 16
 ; a fraseszinha triste da derrota: nota 1 toca na hora (checa_derrota),
 ; as outras tres a cada DERROTA_PASSO quadros -- ver derrota_espera
 DERROTA_ESPERA_INICIAL = 75
@@ -135,17 +139,18 @@ VITORIA_NOTA3 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*2
 VITORIA_NOTA4 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*3
 CAPTURA_Y_MIN   = CHAO_Y - 4
 CAPTURA_Y_MAX   = CHAO_Y + 24
-; HUD: barra de pontos (PONTOS_MIN segmentos, linha 2) e vidas (ERROS_MAX
+; HUD: barra de pontos (BARRA_TILES segmentos, linha 2) e vidas (ERROS_MAX
 ; iconezinhos, linha 3) -- ver desenha_barra/desenha_vidas. Comecam na
 ; coluna 8, depois do rotulo "PONTOS"/"VIDAS" (ver make_jogo.py).
 BARRA_ADDR      = $2000 + 2*32 + 8
 VIDAS_ADDR      = $2000 + 3*32 + 8
 ; UI_BASE vem de build/jogo.inc (tools/make_jogo.py) -- indice do primeiro
-; dos 4 tiles de HUD, na ordem em que o Python escreveu (ver ui_ordem).
+; dos 5 tiles de HUD, na ordem em que o Python escreveu (ver ui_ordem).
 UI_BARRA_VAZIA  = UI_BASE + 0
 UI_BARRA_CHEIA  = UI_BASE + 1
 UI_VIDA_CHEIA   = UI_BASE + 2
 UI_VIDA_VAZIA   = UI_BASE + 3
+UI_BARRA_MEIA   = UI_BASE + 4
 
 ; --------------------------------------------------------------------------
 .segment "HEADER"
@@ -237,9 +242,23 @@ jogo_tmp2:   .res 1
 placar_sujo: .res 1
 rng_seed:    .res 1
 ultimo_pz_x: .res 1         ; x da ultima pizza que nasceu, pra limitar o salto
+                            ; (a pimenta nao mexe nele: so pizza puxa a Amanda)
+ultimo_pimenta: .res 1      ; 1 = o ultimo objeto foi pimenta -- o proximo
+                            ; e pizza na certa, nunca duas pimentas seguidas
+jogo_salto:  .res 1         ; salto_tab do momento, pro spawna_pizza
+tem_proximo: .res 1         ; 1 = uma pimenta ja escolheu onde a proxima
+proximo_pz_x: .res 1        ;     pizza nasce (ver nasce_pimenta)
+; a queda anda em 1/16 de pixel (vel_tab vai de 16 a 48), senao so daria
+; pra acelerar em degraus de 1 px -- de 1 pra 2 dobra a velocidade de uma vez
+jogo_sub:    .res 1         ; fracao acumulada (0-15)
+jogo_passo:  .res 1         ; pixels inteiros que todos descem neste quadro
+; os 3 "espacos" de objeto caindo sao compartilhados entre pizza e pimenta
+; (pz_tipo diz qual e) -- em vez de espacos a mais so pra pimenta, que
+; estourariam o limite de 8 sprites por linha (ver make_sprites.py)
 pz_x:        .res 3
 pz_y:        .res 3
 pz_ativa:    .res 3
+pz_tipo:     .res 3         ; 0 pizza, 1 pimenta
 
 ; --- cena do carro ---
 ; scroll horizontal em 9 bits (0-511, as duas telas coladas -- ver
@@ -280,7 +299,7 @@ chr_menu:   .incbin "chr_menu.bin"       ; fonte + coracao (8 paginas)
 
 .segment "BANK1"
 chr_cena:    .incbin "chr_cena.bin"      ; a Pizza Crek (13 paginas)
-chr_sprites: .incbin "chr_sprites.bin"   ; Amanda e Victor (2 paginas)
+chr_sprites: .incbin "chr_sprites.bin"   ; Amanda, Victor, pizza, pimenta (PAGINAS_SPRITES)
 nam_cena:   .incbin "cena.nam"           ; tela + atributos (4 paginas)
 
 .segment "BANK2"
@@ -1079,7 +1098,7 @@ carrega_cena:
     sta ptr
     lda #>chr_sprites
     sta ptr+1
-    lda #3                  ; 3 paginas: Amanda + Victor sentado + Victor em pe
+    lda #PAGINAS_SPRITES    ; a folha inteira (vem de sprites.inc, nao da mao)
     sta paginas
     jsr copia_ppu
 
@@ -1154,13 +1173,13 @@ carrega_jogo:
     sta paginas
     jsr copia_ppu
 
-    PPU_ADDR $0000           ; Amanda e a pizza -> pattern table 0 (sprites)
+    PPU_ADDR $0000           ; Amanda, pizza e pimenta -> pattern table 0 (sprites)
     lda #<chr_sprites_jogo
     sta ptr
     lda #>chr_sprites_jogo
     sta ptr+1
-    lda #2
-    sta paginas
+    lda #PAGINAS_SPRITES     ; era um "2" escrito na mao: a pimenta (tile 48)
+    sta paginas               ; ficaria de fora da CHR, invisivel, sem erro
     jsr copia_ppu
 
     PPU_ADDR $2000           ; a tela pronta, tiles e atributos -- comeca na
@@ -1194,15 +1213,19 @@ carrega_jogo:
     sta pz_ativa
     sta pz_ativa+1
     sta pz_ativa+2
+    sta jogo_sub
+    sta ultimo_pimenta
+    sta tem_proximo
     lda #$03                 ; aguardando o primeiro B -- ver atualiza_jogo
     sta jogo_fase
     lda #120                 ; meio da tela: a primeira pizza pode ir pros dois lados
     sta ultimo_pz_x
-    lda #ESPERA_BASE
+    lda espera_tab           ; os valores de 0 pontos
     sta jogo_espera
-    lda #VEL_BASE
+    lda vel_tab
     sta jogo_vel             ; placar_sujo fica pra quando mostra_jogando
-                              ; trocar da intro pra tela de jogo de verdade
+    lda salto_tab             ; trocar da intro pra tela de jogo de verdade
+    sta jogo_salto
     jsr atualiza_oam_jogo
 
     lda #TELA_JOGO
@@ -2184,19 +2207,25 @@ reinicia_jogo:
     sta pz_ativa
     sta pz_ativa+1
     sta pz_ativa+2
+    sta jogo_sub
+    sta ultimo_pimenta
+    sta tem_proximo
     sta derrota_tocando        ; corta a fraseszinha triste se ainda
     lda #120                    ; estivesse tocando
     sta ultimo_pz_x
-    lda #ESPERA_BASE
+    lda espera_tab
     sta jogo_espera
-    lda #VEL_BASE
+    lda vel_tab
     sta jogo_vel
+    lda salto_tab
+    sta jogo_salto
     lda #$01                   ; retoma o Grieg de onde musica_para deixou
     sta musica_liga             ; (so 1 byte -- musica_para nao tocou em
     jmp mostra_jogando          ; ch_ptr/ch_wait/ch_vol, nao precisa reiniciar)
 
 ; --------------------------------------------------------------------------
-;  Move as pizzas ativas, spawna novas e detecta captura ou erro.
+;  Move os objetos que caem (pizza ou pimenta), spawna novos e detecta
+;  captura, erro e pimentada.
 ;  So roda no laco principal -- nao pode tocar em 'ptr'/'tmp' (da musica).
 ; --------------------------------------------------------------------------
 atualiza_pizzas:
@@ -2208,14 +2237,30 @@ atualiza_pizzas:
     jsr spawna_pizza
 
 @move:
+    lda jogo_sub               ; quantos pixels inteiros descer neste quadro:
+    clc                         ; soma a velocidade (em 1/16 px) na fracao
+    adc jogo_vel                ; que sobrou, e o que passar de 16 vira pixel
+    tay                         ; (vel_tab <= 48, entao nunca passa de 63)
+    and #$0F
+    sta jogo_sub
+    tya
+    lsr
+    lsr
+    lsr
+    lsr
+    sta jogo_passo
+
     ldx #$00
 @loop:
     lda pz_ativa, x
     beq @prox
     lda pz_y, x
     clc
-    adc jogo_vel
+    adc jogo_passo
     sta pz_y, x
+    ldy pz_tipo, x
+    bne @pimenta
+
     cmp #CAPTURA_Y_MIN
     bcc @prox                ; ainda caindo, nem chegou na faixa
     cmp #CAPTURA_Y_MAX
@@ -2239,6 +2284,26 @@ atualiza_pizzas:
     sta placar_sujo
     jsr som_cai
     jsr checa_derrota
+    jmp @prox
+
+@pimenta:
+    cmp #PIMENTA_Y_MIN
+    bcc @prox                ; ainda longe da cabeca dela
+    cmp #PIMENTA_Y_MAX
+    bcs @chao                 ; chegou no chao sem encostar: passou, so some
+    jsr testa_pimenta
+    bcc @prox
+    lda #$00                  ; ardeu: a pimenta some e custa uma vida
+    sta pz_ativa, x
+    inc jogo_erros
+    lda #$01
+    sta placar_sujo
+    jsr som_arde
+    jsr checa_derrota
+    jmp @prox
+@chao:
+    lda #$00
+    sta pz_ativa, x
 @prox:
     inx
     cpx #$03
@@ -2267,7 +2332,37 @@ testa_pega:
     clc
     rts
 
-; ---- acha uma pizza livre e a poe caindo no topo, num x aleatorio ----
+; ---- a pimenta x (indice em X) encostou na Amanda? carry = 1 se sim ----
+; O contrario da pizza: ali a caixa e generosa pra ajudar a PEGAR, aqui ela
+; e apertada pra ajudar a DESVIAR -- conta so o miolo da Amanda (x+3 a
+; x+12, sem o cabelo solto nas bordas) contra o miolo da pimenta (x+1 a
+; x+6). Encostar de raspao nao doi.
+;   miolo_amanda  < fim_pimenta   <=>  player_x + 3 < pz_x + 7  <=>  player_x < pz_x + 4
+;   miolo_pimenta < fim_amanda    <=>  pz_x + 1 < player_x + 13 <=>  pz_x < player_x + 12
+; (pz_x <= ANDA_MAX-16+11 e player_x <= ANDA_MAX, as somas nunca passam de 255)
+testa_pimenta:
+    lda pz_x, x
+    clc
+    adc #4
+    sta jogo_tmp
+    lda player_x
+    cmp jogo_tmp
+    bcs @nao                  ; Amanda inteira a direita da pimenta
+    lda player_x
+    clc
+    adc #12
+    sta jogo_tmp
+    lda pz_x, x
+    cmp jogo_tmp
+    bcs @nao                  ; pimenta inteira a direita da Amanda
+    sec
+    rts
+@nao:
+    clc
+    rts
+
+; ---- acha um espaco livre e poe um objeto caindo no topo: quase sempre
+; pizza, as vezes pimenta (chance em pimenta_tab, que e zero no comeco) ----
 spawna_pizza:
     ldx #$00
 @procura:
@@ -2276,16 +2371,67 @@ spawna_pizza:
     inx
     cpx #$03
     bne @procura
-    rts                        ; as tres estao ocupadas, tenta de novo depois
+    rts                        ; os tres estao ocupados, tenta de novo depois
 @achou:
-    ; o x fica dentro de +-SALTO_MAX do x da pizza anterior, pra elas nao
+    lda ultimo_pimenta          ; nunca duas pimentas seguidas: ela tem que
+    bne @e_pizza                 ; ter sempre pizza pra correr atras
+    ldy jogo_pontos
+    lda pimenta_tab, y
+    beq @e_pizza                 ; ainda nas primeiras pizzas: so pizza
+    sta jogo_tmp
+    jsr avanca_rng
+    lda rng_seed
+    cmp jogo_tmp
+    bcs @e_pizza                 ; sorteio >= chance: pizza
+    jsr nasce_pimenta
+    lda #$01
+    sta ultimo_pimenta
+    jmp @dificuldade
+@e_pizza:
+    jsr nasce_pizza
+    lda #$00
+    sta ultimo_pimenta
+
+@dificuldade:
+    ; tudo sai das tabelas do make_jogo.py, indexadas pela barra -- a curva
+    ; inteira (e a regra salto <= espera) mora num lugar so, no Python
+    ldy jogo_pontos
+    lda espera_tab, y
+    sta jogo_espera
+    lda vel_tab, y
+    sta jogo_vel
+    lda salto_tab, y
+    sta jogo_salto
+    rts
+
+; ---- pizza no espaco X: no x que a pimenta ja reservou, ou num sorteado ----
+nasce_pizza:
+    lda tem_proximo
+    beq @sorteia
+    lda #$00
+    sta tem_proximo
+    lda proximo_pz_x
+    jmp @tem_x
+@sorteia:
+    jsr sorteia_x_pizza
+@tem_x:
+    sta pz_x, x
+    sta ultimo_pz_x
+    lda #$00
+    sta pz_tipo, x
+    jmp nasce_no_topo
+
+; ---- sorteia o x de uma pizza (em A), perto da pizza anterior ----
+; Nao mexe em X (o espaco que vai receber o objeto).
+sorteia_x_pizza:
+    ; o x fica dentro de +-jogo_salto do x da pizza anterior, pra elas nao
     ; saltarem de um extremo ao outro da tela. Calcula base..topo (a faixa
     ; toda, ja dentro da tela) e sorteia um valor DENTRO dela -- nao da pra
     ; so limitar a base e somar um deslocamento fixo: perto de uma borda
-    ; isso deixava o topo escapar bem alem de SALTO_MAX pro outro lado.
-    lda ultimo_pz_x             ; topo = min(ultimo_pz_x + SALTO_MAX, ANDA_MAX-16)
+    ; isso deixava o topo escapar bem alem do salto pro outro lado.
+    lda ultimo_pz_x             ; topo = min(ultimo_pz_x + salto, ANDA_MAX-16)
     clc
-    adc #SALTO_MAX
+    adc jogo_salto
     bcs @topo_estourou          ; passou de 255 -- estourou o teto com certeza
     cmp #(ANDA_MAX-16)
     bcc @tem_topo
@@ -2294,12 +2440,12 @@ spawna_pizza:
 @tem_topo:
     sta jogo_tmp2                ; jogo_tmp2 = topo
 
-    lda ultimo_pz_x             ; base = max(ultimo_pz_x - SALTO_MAX, ANDA_MIN)
-    cmp #(SALTO_MAX + ANDA_MIN)
-    bcc @usa_min
+    lda ultimo_pz_x             ; base = max(ultimo_pz_x - salto, ANDA_MIN)
     sec
-    sbc #SALTO_MAX
-    jmp @tem_base
+    sbc jogo_salto
+    bcc @usa_min                ; ficaria negativo
+    cmp #ANDA_MIN
+    bcs @tem_base
 @usa_min:
     lda #ANDA_MIN
 @tem_base:
@@ -2322,36 +2468,41 @@ spawna_pizza:
 @tem_delta:
     clc
     adc jogo_tmp                 ; x = base + deslocamento, sempre dentro da faixa
+    rts
+
+; ---- pimenta no espaco X: na coluna da PROXIMA pizza, uma batida antes ----
+; A primeira versao punha a pimenta longe da ultima pizza -- e ela nunca
+; acertava ninguem: quando caia, a Amanda ja tinha passado por aquela
+; coluna a caminho da pizza seguinte (um robo que ignorava as pimentas
+; ganhava sem perder vida). Aqui a pimenta ja sorteia onde a proxima pizza
+; vai nascer (e reserva esse x em proximo_pz_x) e cai ali mesmo, `espera`
+; quadros antes dela: quem corre pra baixo da pizza e fica la parado leva a
+; pimenta na cabeca. Da pra desviar esperando do lado a pimenta passar, ou
+; pegando a pizza pela beirada (a caixa da pizza e bem mais larga que a da
+; pimenta, ver testa_pega/testa_pimenta). Nunca vem duas pimentas
+; seguidas (ver spawna_pizza), entao a reserva e sempre usada logo depois.
+nasce_pimenta:
+    jsr sorteia_x_pizza
+    sta proximo_pz_x
+    lda #$01
+    sta tem_proximo
+    jsr avanca_rng               ; um tiquinho de lado, pra nao ser sempre o
+    lda rng_seed                 ; mesmo centro: x = pizza - 4 + (0..15), ou
+    and #$0F                     ; seja, o centro da pimenta vai de 8px a
+    clc                          ; esquerda a 7px a direita do centro da pizza
+    adc proximo_pz_x              ; (pizza >= ANDA_MIN = 8: nunca fica negativo;
+    sec                           ; pizza <= ANDA_MAX-16: nunca passa da tela)
+    sbc #4
     sta pz_x, x
-    sta ultimo_pz_x
+    lda #$01
+    sta pz_tipo, x
+    ; cai direto no nasce_no_topo
+
+nasce_no_topo:
     lda #26                    ; nasce logo abaixo da faixa vermelha do topo
     sta pz_y, x
     lda #$01
     sta pz_ativa, x
-
-    ; a dificuldade sobe aos poucos com a pontuacao
-    lda jogo_pontos
-    lsr
-    lsr
-    sta jogo_tmp                ; pontos/4
-
-    lda #ESPERA_BASE
-    sec
-    sbc jogo_tmp
-    cmp #ESPERA_MIN
-    bcs @espera_ok
-    lda #ESPERA_MIN
-@espera_ok:
-    sta jogo_espera
-
-    lda #VEL_BASE
-    clc
-    adc jogo_tmp
-    cmp #VEL_MAX
-    bcc @vel_ok
-    lda #VEL_MAX
-@vel_ok:
-    sta jogo_vel
     rts
 
 ; ---- LFSR de 8 bits; mistura o frame_count pra nunca travar em zero ----
@@ -2489,9 +2640,24 @@ som_cai:
     sta $400F
     rts
 
+; a pimenta: o ruido no modo "curto" (bit 7 do $400E) repete uma sequencia
+; de 93 passos em vez de 32767 e vira um zumbido metalico, meio de
+; campainha -- da pra distinguir de ouvido do baque de pizza caindo, que
+; custa a mesma vida por um motivo diferente
+som_arde:
+    lda #$0A
+    sta $400C
+    lda #$86
+    sta $400E
+    lda #$88                ; o mais comprido dos tres
+    sta $400F
+    rts
+
 ; --------------------------------------------------------------------------
 ;  Monta a OAM do minigame: a Amanda (sprites 0-7, o mesmo monta_oam da
-;  pizzaria) e ate 3 pizzas (sprites 8-13, 2 tiles cada). Na derrota
+;  pizzaria) e ate 3 objetos caindo (sprites 8-13, 2 tiles cada): a pizza
+;  deitada (16x8, lado a lado), a pimenta em pe (8x16, um em cima do
+;  outro). Na derrota
 ;  (fase 2), o bonequinho dela some da tela -- so o retrato grande e
 ;  triste fica, ate ela apertar B pra tentar de novo (ver reinicia_jogo).
 ; --------------------------------------------------------------------------
@@ -2512,12 +2678,30 @@ atualiza_oam_jogo:
     jmp @pizzas
 @com_amanda:
     jsr monta_oam
+    lda jogo_fase
+    cmp #$03
+    bne @pizzas
+    ; na intro nada cai ainda: os espacos das pizzas viram os dois icones
+    ; ao lado do texto (posicoes de make_jogo.py, ver INTRO_* em jogo.inc)
+    ldx #$00
+@icone:
+    lda icones_intro, x
+    sta oam+$20, x
+    inx
+    cpx #(6*4)               ; sprites 8-13
+    bne @icone
+    rts
 @pizzas:
     ldx #$00
     ldy #$20                 ; sprite 8 = byte 32
 @loop:
     lda pz_ativa, x
     beq @esconde
+    lda #$02                 ; paleta 2: a pizza, e a pimenta pega carona
+    sta oam+2, y
+    sta oam+6, y
+    lda pz_tipo, x
+    bne @pimenta
     lda pz_y, x
     sta oam, y
     sta oam+4, y
@@ -2525,13 +2709,24 @@ atualiza_oam_jogo:
     sta oam+1, y
     lda #(TILE_PIZZA+1)
     sta oam+5, y
-    lda #$02                 ; paleta 2 (so a pizza usa, nesta tela)
-    sta oam+2, y
-    sta oam+6, y
     lda pz_x, x
     sta oam+3, y
     clc
     adc #$08
+    sta oam+7, y
+    jmp @prox
+@pimenta:
+    lda pz_y, x
+    sta oam, y
+    clc
+    adc #$08
+    sta oam+4, y
+    lda #TILE_PIMENTA
+    sta oam+1, y
+    lda #(TILE_PIMENTA+1)
+    sta oam+5, y
+    lda pz_x, x
+    sta oam+3, y
     sta oam+7, y
     jmp @prox
 @esconde:
@@ -2549,12 +2744,16 @@ atualiza_oam_jogo:
     rts
 
 ; --------------------------------------------------------------------------
-;  HUD: a barra de pontos (PONTOS_MIN segmentos) e as vidas (ERROS_MAX
-;  iconezinhos), escritas no fundo. So redesenha quando 'placar_sujo'
-;  pede -- roda no NMI, pode usar ptr/tmp (a musica toca depois, na mesma
-;  chamada, nunca ao mesmo tempo). BARRA_ADDR/VIDAS_ADDR nunca cruzam uma
-;  pagina de 256 bytes (15 e 5 tiles, respectivamente), entao da pra somar
-;  o indice direto no byte baixo sem se preocupar com o carry.
+;  HUD: a barra de pontos (BARRA_TILES segmentos, cada um vale 2 pizzas:
+;  vazio, meio, cheio) e as vidas (ERROS_MAX iconezinhos), escritas no
+;  fundo. So redesenha quando 'placar_sujo' pede -- roda no NMI, pode usar
+;  ptr/tmp (a musica toca depois, na mesma chamada, nunca ao mesmo tempo).
+;
+;  Cada fileira e UM PPUADDR e depois uma escrita por tile (o PPU anda
+;  sozinho pro tile da direita). A versao antiga reapontava o PPUADDR a
+;  cada tile e, com a barra de meio-tile, o NMI de um quadro com erro +
+;  troca de nota nos tres canais passava do vblank -- o emulador lia os
+;  registradores do APU com a musica pela metade (test_musica.py pegou).
 ; --------------------------------------------------------------------------
 desenha_hud:
     lda jogo_fase             ; so faz sentido jogando -- nas telas de
@@ -2564,51 +2763,54 @@ desenha_hud:
     lda #$00
     sta placar_sujo
 
-    ldx #$00
-@loop_barra:
-    txa
-    cmp jogo_pontos
-    lda #UI_BARRA_VAZIA
-    bcs @poe_barra           ; X >= jogo_pontos: esse segmento ainda nao foi
-    lda #UI_BARRA_CHEIA
-@poe_barra:
-    pha
     bit PPUSTATUS
     lda #>BARRA_ADDR
     sta PPUADDR
-    txa
-    clc
-    adc #<BARRA_ADDR
+    lda #<BARRA_ADDR
     sta PPUADDR
-    pla
+    lda jogo_pontos            ; tmp = pizzas que ainda faltam "gastar" na
+    sta tmp                     ; barra, da esquerda pra direita
+    ldx #BARRA_TILES
+@loop_barra:
+    ldy #$02                   ; y = quantas cabem neste segmento: min(tmp, 2)
+    lda tmp
+    cmp #$02
+    bcs @tem_y
+    tay
+@tem_y:
+    lda tmp                    ; tmp = max(tmp - 2, 0)
+    sec
+    sbc #$02
+    bcs @guarda
+    lda #$00
+@guarda:
+    sta tmp
+    lda barra_tile_tab, y
     sta PPUDATA
-    inx
-    cpx #PONTOS_MIN
+    dex
     bne @loop_barra
 
+    lda #>VIDAS_ADDR
+    sta PPUADDR
+    lda #<VIDAS_ADDR
+    sta PPUADDR
     ldx #$00
 @loop_vidas:
-    txa
-    cmp jogo_erros
+    cpx jogo_erros
     lda #UI_VIDA_VAZIA
     bcc @poe_vida             ; X < jogo_erros: essa vida ja foi perdida
     lda #UI_VIDA_CHEIA
 @poe_vida:
-    pha
-    bit PPUSTATUS
-    lda #>VIDAS_ADDR
-    sta PPUADDR
-    txa
-    clc
-    adc #<VIDAS_ADDR
-    sta PPUADDR
-    pla
     sta PPUDATA
     inx
     cpx #ERROS_MAX
     bne @loop_vidas
 @fim:
     rts
+
+; segmento da barra com 0, 1 ou 2 pizzas pegas
+barra_tile_tab:
+    .byte UI_BARRA_VAZIA, UI_BARRA_MEIA, UI_BARRA_CHEIA
 
 ; ==========================================================================
 ;  Video: ligar, desligar, copiar
@@ -3155,6 +3357,16 @@ aplica_volume:
 ; ==========================================================================
 duty_canal:  .byte $40, $80, $00
 ; Amanda: 8 tiles, coluna esquerda de cima a baixo e depois a direita
+; OAM dos icones da intro (y, tile, atributo, x): pizza deitada, pimenta
+; em pe e os dois ultimos sprites do bloco escondidos
+icones_intro:
+    .byte INTRO_PIZZA_OAM_Y, TILE_PIZZA, $02, INTRO_PIZZA_X
+    .byte INTRO_PIZZA_OAM_Y, TILE_PIZZA+1, $02, INTRO_PIZZA_X+8
+    .byte INTRO_PIMENTA_OAM_Y, TILE_PIMENTA, $02, INTRO_PIMENTA_X
+    .byte INTRO_PIMENTA_OAM_Y+8, TILE_PIMENTA+1, $02, INTRO_PIMENTA_X
+    .byte $FF, 0, 0, 0
+    .byte $FF, 0, 0, 0
+
 ama_dx:      .byte 0, 0, 0, 0,  8, 8, 8, 8
 ama_dx_esp:  .byte 8, 8, 8, 8,  0, 0, 0, 0
 ama_dy:      .byte 0, 8, 16, 24, 0, 8, 16, 24
@@ -3242,6 +3454,7 @@ paletas_carro:
 .include "musica.inc"
 .include "dialogo.inc"
 .include "jogo.inc"
+.include "sprites.inc"
 .include "carro.inc"
 .include "fotos.inc"
 

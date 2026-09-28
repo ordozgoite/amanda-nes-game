@@ -42,7 +42,19 @@ anda(n=200, gravando=True)           # ate ela pegar -- grava o som_come
 nes.bus.ram[sym["player_x"]] = 8     # bem longe -- a proxima pizza cai no chao
 anda(n=200, gravando=True)           # ate errar -- grava o som_cai
 
-for pontos in (0, 4, 8, 11, 14):     # a barra enchendo: ~5 s em cada degrau
+# uma pimenta na cabeca dela, montada na mao -- grava o som_arde
+for i in range(3):
+    nes.bus.ram[sym["pz_ativa"] + i] = 0
+nes.bus.ram[sym["pz_ativa"]] = 1
+nes.bus.ram[sym["pz_tipo"]] = 1
+nes.bus.ram[sym["pz_x"]] = nes.bus.ram[sym["player_x"]] + 4
+nes.bus.ram[sym["pz_y"]] = 150
+nes.bus.ram[sym["jogo_espera"]] = 200
+anda(n=120, gravando=True)
+
+from make_jogo import PONTOS_MIN
+for pontos in (0, PONTOS_MIN * 4 // 15, PONTOS_MIN * 8 // 15,   # a barra enchendo:
+               PONTOS_MIN * 11 // 15, PONTOS_MIN - 1):          # ~5 s em cada degrau
     for _ in range(300):
         nes.bus.ram[sym["jogo_pontos"]] = pontos
         nes.bus.ram[sym["jogo_erros"]] = 0

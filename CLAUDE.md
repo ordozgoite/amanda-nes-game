@@ -264,6 +264,29 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   ANTERIOR. O `periodos_esperados` do `test_musica.py` modelava a 1a
   passada (periodo zero antes da 1a nota) e acusava erro bem na virada do
   laco, com o motor certo.
+- **Pimenta que nao ameaca ninguem passa em todo teste de "e justo?".** A
+  primeira versao nascia longe (24px+) da ultima pizza, pra nunca cair em
+  cima dela -- e nunca acertava ninguem: quando ela chegava no chao, a
+  Amanda ja tinha passado por aquela coluna indo pra pizza seguinte. So
+  apareceu rodando um robo que finge que as pimentas nao existem (ele
+  ganhava sem perder vida). Obstaculo tem que ser testado dos dois lados:
+  da pra desviar (robo que desvia ganha) E precisa desviar (robo que nao
+  desvia perde).
+- **A distancia entre duas pizzas seguidas nao pode passar da espera
+  entre elas.** A Amanda anda 1 px por quadro e as duas chegam no chao
+  `espera` quadros uma depois da outra: um salto maior que isso deixa a
+  pizza impossivel de alcancar. Quando a curva encurta a espera, o salto
+  encurta junto (`salto_tab = min(SALTO_MAX, espera - FOLGA_REACAO)`, no
+  Python, onde as duas sao calculadas lado a lado).
+- **Numero de paginas de CHR escrito a mao no `copia_ppu` e a mesma
+  armadilha do `PAGINAS_CENA`.** O minigame copiava `lda #2` paginas da
+  folha de sprites, que ja tinha 3 -- a pimenta (tile 48) ficaria de fora,
+  invisivel, sem erro nenhum. Agora vem de `PAGINAS_SPRITES` em
+  `build/sprites.inc`, junto com `TILE_PIZZA`/`TILE_PIMENTA`.
+- **A OAM tambem leva um quadro pra chegar no PPU** (igual o placar): o
+  laco principal monta a copia em RAM, e so o DMA do NMI seguinte leva pro
+  PPU. Teste que mexe em RAM e le `bus.oam` depois de um `frame()` so ve o
+  quadro anterior.
 - **A CHR da pizzaria esta cheia (256), a do carro nao.** Os acentos da
   conversa do carro (Ã, É) so existem la, logo abaixo de `DLG_BASE`
   (`ACENTOS_CARRO` em `make_scene.py`); o resto da fonte e da moldura usa
@@ -286,11 +309,24 @@ de aproximacao pro aviso "B" comeca na borda da mesa (`PERTO_MIN`), nao
 precisa mais chegar coladinho nele.
 
 Minigame das pizzas caindo, com fluxo completo:
-- **intro** (`jogo_fase = 3`): "PEGUE N PIZZAS!" antes da primeira pizza cair,
-  ate apertar B.
-- **jogando** (`fase = 0`): HUD visual, nao numerico -- barra de `PONTOS_MIN`
-  segmentos e `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que
-  overscan de TV de tubo corta). A musica e "Na Gruta do Rei da Montanha"
+- **intro** (`jogo_fase = 3`): "PEGUE 30 PIZZAS!" / "DESVIE DAS PIMENTAS!",
+  com uma pizza e uma pimenta de verdade (sprites) do lado do texto, ate
+  apertar B.
+- **jogando** (`fase = 0`): HUD visual, nao numerico -- barra de
+  `BARRA_TILES` segmentos (cada um vale 2 pizzas: vazio/meio/cheio) e
+  `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que overscan de
+  TV de tubo corta). `PONTOS_MIN = 30`, uns 50 s de jogo.
+  **Pimentas**: a partir de `PIMENTA_DESDE` pizzas, parte do que cai e
+  pimenta -- encostou, perde vida (`som_arde`, ruido metalico); chegou no
+  chao, some. Nunca duas seguidas. Ela cai na coluna da PROXIMA pizza, uma
+  batida antes (`nasce_pimenta` ja reserva o x da pizza em `proximo_pz_x`):
+  tem que esperar do lado ela passar. Pizza e pimenta dividem os mesmos 3
+  espacos (`pz_tipo`), por causa do limite de 8 sprites por linha.
+  **Curva de dificuldade** inteira em `make_jogo.py` (`espera_tab`,
+  `vel_tab` em 1/16 px, `salto_tab`, `pimenta_tab`, indexadas por
+  `jogo_pontos`); o assembly so le. `tools/robo.py` joga com o controle
+  (1 px/quadro, sem teletransporte) e os testes exigem que ele ganhe sem
+  perder vida -- e que um robo que IGNORA as pimentas perca. A musica e "Na Gruta do Rei da Montanha"
   (Grieg, `MUSICA_JOGO` em `make_song.py`), que acelera conforme a barra
   enche: de 1x (vazia) a 2x (faltando uma pizza), pela tabela `VEL_JOGO`.
   O motor de som anda em "passos", nao em quadros: `musica_vel` (16 = um

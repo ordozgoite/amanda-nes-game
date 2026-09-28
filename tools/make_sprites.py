@@ -49,6 +49,7 @@ y=16 e y=48. Ja na cabeca o indice 3 e outra coisa: um lacinho rosa (a
 mesma cor do coracao de neon da parede) cravado no alto do cabelo, do
 lado direito -- o detalhe que fecha a silhueta como feminina.
 """
+import os
 import sys
 from make_chr import encode_tile, BLANK
 
@@ -242,6 +243,33 @@ PIZZA = [
     linha(('1',16)),                                              # crosta, borda de baixo
 ]
 
+# ---- a pimenta do minigame: 8x16, em pe -- a Amanda tem que desviar ----
+# Usa a MESMA paleta da pizza (1 = laranja da crosta, 2 = vermelho do
+# molho, 3 = branco do queijo): as 4 paletas de sprite ja estao tomadas
+# (3 da Amanda + 1 da pizza), entao ela precisa caber nessas tres cores.
+# Cabinho laranja, corpo vermelho, um brilho branco e a ponta curvada.
+# Em pe (8 de largura) e nao deitada (16) de proposito: cada coluna de
+# tile conta no limite de 8 sprites por linha, e a Amanda (2) + 3 objetos
+# caindo lado a lado (2 cada) ja fecham exatamente 8.
+PIMENTA = [
+    "....11..",                                                   # cabinho
+    "....1...",
+    "...11...",
+    "..1111..",                                                   # coroinha
+    ".222222.",
+    ".232222.",                                                   # brilho
+    ".232222.",
+    ".232222.",
+    ".232222.",
+    "..22222.",
+    "..2222..",
+    "..2222..",
+    "...222..",
+    "...22...",
+    "..22....",                                                   # ponta curvada
+    ".2......",
+]
+
 # ---- o aviso de "aperte B", que flutua sobre a cabeca dele ----
 LETRA_B = ["111.", "1..1", "111.", "1..1", "111."]
 
@@ -310,15 +338,37 @@ def build():
     saida.append(encode_tile(falando_empe[1]))  # tile 46: metade esquerda
     saida.append(encode_tile(falando_empe[5]))  # tile 47: metade direita
 
-    while len(saida) < 48:                      # tres paginas de 256 bytes
+    for t in fatiar(PIMENTA, 8):                # tiles 48-49: a pimenta
+        saida.append(encode_tile(t))
+
+    while len(saida) % 16:                      # completa a pagina de 256 bytes
         saida.append(BLANK)
     return b"".join(saida)
+
+# o assembly le daqui (sprites.inc) em vez de repetir os numeros a mao --
+# a folha cresceu de 3 pra 4 paginas com a pimenta, e o minigame copiava
+# um "2" escrito na mao que deixaria ela (e a pizza, se mudasse de lugar)
+# de fora da CHR sem avisar nada
+TILE_PIZZA   = 26
+TILE_PIMENTA = 48
 
 if __name__ == "__main__":
     destino = sys.argv[1] if len(sys.argv) > 1 else "build/chr_sprites.bin"
     d = build()
-    assert len(d) == 48 * 16, len(d)
+    assert d[TILE_PIZZA * 16:(TILE_PIZZA + 2) * 16] == b"".join(
+        encode_tile(t) for t in fatiar(PIZZA))
+    assert d[TILE_PIMENTA * 16:(TILE_PIMENTA + 2) * 16] == b"".join(
+        encode_tile(t) for t in fatiar(PIMENTA, 8))
+    paginas = len(d) // 256
     open(destino, "wb").write(d)
-    print(f"sprites: {destino} ({len(d)} bytes) -- Amanda 0-15, "
+    inc = os.path.join(os.path.dirname(destino), "sprites.inc")
+    open(inc, "w").write("\n".join([
+        "; gerado por tools/make_sprites.py -- nao edite a mao", "",
+        f"PAGINAS_SPRITES = {paginas}",
+        f"TILE_PIZZA      = {TILE_PIZZA}",
+        f"TILE_PIMENTA    = {TILE_PIMENTA}", ""]))
+    print(f"sprites: {destino} ({len(d)} bytes, {paginas} paginas) -- Amanda 0-15, "
           f"Victor sentado 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27, "
-          f"boca da Amanda aberta 28-29, Victor em pe 30-45, boca aberta 46-47")
+          f"boca da Amanda aberta 28-29, Victor em pe 30-45, boca aberta 46-47, "
+          f"pimenta 48-49")
+    print(f"{inc}")
