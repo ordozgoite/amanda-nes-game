@@ -768,12 +768,22 @@ def main():
     check("\"FELIZ 2 ANOS DE NAMORO\" acende (as cores finais do texto)",
           bytes(fo.bus.vram[0x3F05:0x3F07]) == bytes(int(c[1:], 16) for c in rampa),
           bytes(fo.bus.vram[0x3F05:0x3F07]).hex())
-    rabo, coracao = set(), False
-    for _ in range(300):
+    rabo, coracao, au, ys_ama, ys_vic = set(), False, False, set(), set()
+    for _ in range(600):
         fo.frame()
         rabo.add(fo.bus.ram[sym["hulk_quadro"]])
         coracao |= fo.bus.oam[88] < 0xEF
-    check("parado, o Hulk abana o rabo", rabo == {0, 2}, sorted(rabo))
+        # o latido: ruido no modo curto, com envelope (sem volume constante)
+        au |= fo.bus.apu[0x0E] & 0x80 and not fo.bus.apu[0x0C] & 0x10
+        ys_ama.add(fo.bus.ram[sym["player_y"]])
+        ys_vic.add(fo.bus.ram[sym["victor_y"]])
+    check("parado, o Hulk abana o rabo", {0, 2} <= rabo, sorted(rabo))
+    check("e late de boca aberta (quadros 3 e 4)", {3, 4} & rabo, sorted(rabo))
+    check("o latido toca no ruido", au)
+    chao = const("FIM_CHAO") - 32
+    check("os dois dao um pulinho quando ele late",
+          min(ys_ama) < chao and min(ys_vic) < chao and max(ys_ama) == max(ys_vic) == chao,
+          f"{sorted(ys_ama)} {sorted(ys_vic)}")
     check("um coracaozinho sobe dos dois", coracao)
     check("a musica continua: o refrao", fo.bus.ram[sym["musica_liga"]] == 1 and
           (fo.bus.ram[sym["ch_base_lo"]] | (fo.bus.ram[sym["ch_base_hi"]] << 8)) == sym["musica1_canal0"])
@@ -782,7 +792,8 @@ def main():
         fo.frame([BTN_START, BTN_B, BTN_A, BTN_SEL, TODOS, 0][k % 6])
     check("o fim e pra sempre: nenhum botao sai da cena final",
           fo.bus.ram[sym["tela"]] == TELA_FIM and fo.bus.banco == 0)
-    check("e ninguem sai do lugar", bytes(fo.bus.oam[0:64]) == fim_oam[0:64])
+    check("e ninguem sai do lugar (x dos 16 sprites dos dois)",
+          bytes(fo.bus.oam[3:64:4]) == fim_oam[3:64:4])
     check("pilha inteira depois de tudo", 0xF0 <= fo.cpu.sp <= 0xFF, f"SP=${fo.cpu.sp:02X}")
 
     print("\n== 10. O minigame: derrota ao acumular ERROS_MAX ==")

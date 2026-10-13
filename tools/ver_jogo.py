@@ -170,3 +170,10 @@ for _ in range(400):
         break
 render(nes).save("build/jogo-17-fim-coracao.png")
 print("build/jogo-17-fim-coracao.png")
+for _ in range(600):
+    nes.frame()
+    if nes.bus.ram[sym["lati_t"]] == 5:       # boca aberta, ela no alto do pulo
+        break
+nes.frame()                       # a OAM chega no PPU no quadro seguinte
+render(nes).save("build/jogo-18-fim-latido.png")
+print("build/jogo-18-fim-latido.png")

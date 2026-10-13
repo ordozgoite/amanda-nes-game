@@ -275,8 +275,9 @@ PIMENTA = [
 # de caramelo, peito claro e as patas pintadinhas de branco. Usa a paleta
 # 2 (a da cabeca do Victor): 1 = preto, 2 = bege, 3 = cinza -- exatamente
 # as tres cores dele, sem gastar paleta nova (as 4 ja estao tomadas).
-# Tres quadros: dois de passo (A/B) e um parado abanando o rabo (C = pernas
-# do A com o rabo do B); so os tiles que mudam viram tile novo.
+# Cinco quadros: dois de passo (A/B), um parado abanando o rabo (C = pernas
+# do A com o rabo do B) e os dois latindo (D/E = A/C de boca aberta); so os
+# tiles que mudam viram tile novo.
 HULK_CORPO = [
     "..............1....1....",                                   # pontas das orelhas
     "..............11..11....",
@@ -314,6 +315,25 @@ HULK_PATAS_B = [
 HULK_A = HULK_CORPO + HULK_RABO_EMPE + HULK_TRONCO + HULK_PATAS_A
 HULK_B = HULK_CORPO + HULK_RABO_DEITADO + HULK_TRONCO + HULK_PATAS_B
 HULK_C = HULK_CORPO + HULK_RABO_DEITADO + HULK_TRONCO + HULK_PATAS_A
+
+# Latindo: so a cabeca muda (colunas 12 em diante, linhas 6-8) -- o
+# focinho de cima vai pra frente, a boca abre e o queixo cai. O rabo, que
+# divide essas linhas na coluna da esquerda, continua o do quadro de base.
+HULK_BOCA_ABERTA = {                    # colunas 12-23
+    6: "..1111112221",
+    7: "..11111.....",
+    8: ".1111222....",
+}
+
+def latindo(arte):
+    nova = list(arte)
+    for y, direita in HULK_BOCA_ABERTA.items():
+        assert len(direita) == 12
+        nova[y] = arte[y][:12] + direita
+    return nova
+
+HULK_D = latindo(HULK_A)                # latindo com o rabo em pe
+HULK_E = latindo(HULK_C)                # latindo com o rabo abanando
 
 # ---- coracaozinho que sobe dos dois na cena final (8x8) ----
 # indice 3 da paleta 0 -- o rosa do laco dela
@@ -359,7 +379,7 @@ def hulk_tiles():
     """(tiles unicos, [indices por quadro]) -- celulas na ordem de fatiar
     (coluna esquerda de cima a baixo, depois a do meio, depois a direita)."""
     unicos, por_quadro = [], []
-    for arte in (HULK_A, HULK_B, HULK_C):
+    for arte in (HULK_A, HULK_B, HULK_C, HULK_D, HULK_E):
         assert len(arte) == 16 and all(len(l) == 24 for l in arte)
         idx = []
         for t in fatiar(arte, 24):
@@ -450,7 +470,8 @@ if __name__ == "__main__":
         f"TILE_PIMENTA    = {TILE_PIMENTA}",
         f"TILE_CORACAOZINHO = {TILE_CORACAOZINHO}", "",
         "; o Hulk: 6 celulas por quadro (coluna esquerda, meio, direita;",
-        "; cada uma de cima pra baixo), quadros A e B de passo e C parado",
+        "; cada uma de cima pra baixo): A e B de passo, C parado abanando,",
+        "; D e E latindo (A e C de boca aberta)",
         "hulk_tile_tab: .byte " + ", ".join(str(t) for q in hulk_tiles()[1] for t in q),
         ""]))
     print(f"sprites: {destino} ({len(d)} bytes, {paginas} paginas) -- Amanda 0-15, "

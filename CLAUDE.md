@@ -409,10 +409,14 @@ nova ja nasce escura porque `carrega_paletas` aplica o `fade_nivel` atual.
 Amanda e o Hulk (cachorro dela) chegam andando juntos ate o meio, o
 "FELIZ 2 ANOS DE NAMORO" acende (so a paleta 1 do fundo muda, pela
 `RAMPA_TEXTO` -- o texto ja esta na nametable desde o comeco), e dali o
-Hulk abana o rabo e uns coracaozinhos sobem dos dois, pra sempre. Victor e
+Hulk abana o rabo, late "au au" de boca aberta a cada 3-4 s (`late`,
+`som_au`: ruido no modo curto escorregando pro grave -- o ruido esta livre
+ali) com os dois dando um pulinho, e uns coracaozinhos sobem dos dois, pra
+sempre. `make audio` grava `build/fim.wav`. Victor e
 Amanda sao as rotinas da pizzaria (`monta_oam`, `monta_oam_victor_empe`);
 o Hulk (`HULK_*` em `make_sprites.py`, 24x16, paleta 2: preto/bege/cinza,
-tres quadros: dois de passo e um abanando) vive na mesma folha de sprites.
+cinco quadros: dois de passo, um abanando e dois latindo) vive na mesma
+folha de sprites.
 Nenhum botao faz nada ali.
 
 ## Falta

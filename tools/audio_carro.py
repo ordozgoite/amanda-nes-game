@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Grava o audio do carro: o motor e a rua (com carros passando e o tique
 das letras da conversa por cima), o som abaixando junto com o fade e o
-refrao de "Amanda" estreando na primeira foto."""
+refrao de "Amanda" estreando na primeira foto. Depois segue pelas fotos e
+grava a cena final (o Hulk latindo por cima do refrao) em build/fim.wav."""
 import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
@@ -52,3 +53,13 @@ anda(n=60 * 8, gravando=True)               # o refrao estreando
 
 dur, pico = gravar_wav("build/carro.wav", som)
 print(f"build/carro.wav  --  {dur:.1f} s, pico {pico:.3f}")
+
+for _ in range(20):                         # B pelas fotos ate a cena final
+    if nes.bus.ram[sym["tela"]] == 5:
+        break
+    anda(B, 1)
+    anda(n=100)
+som = []
+anda(n=60 * 16, gravando=True)              # chegando, o texto, uns latidos
+dur, pico = gravar_wav("build/fim.wav", som)
+print(f"build/fim.wav  --  {dur:.1f} s, pico {pico:.3f}")

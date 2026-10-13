@@ -306,6 +306,9 @@ hulk_x:       .res 1
 hulk_quadro:  .res 1        ; 0/1 passo, 2 parado abanando o rabo
 cor_y:        .res 1        ; o coracaozinho subindo (0 = escondido)
 cor_espera:   .res 1
+hulk_boca:    .res 1        ; 1 = boca aberta (latindo)
+lati_t:       .res 1        ; quadro dentro do "au au" (0 = quieto)
+lati_cont:    .res 1        ; quadros ate o proximo "au au"
 
 ; --- musica ---
 musica_liga: .res 1         ; 0 = motor desligado (menu, em silencio)
@@ -1666,8 +1669,9 @@ atualiza_foto:
 ; ==========================================================================
 ;  Tela: a cena final (ver tools/make_fim.py). O Victor, a Amanda e o Hulk
 ;  chegam andando pela grama ate o meio da tela, "FELIZ 2 ANOS DE NAMORO"
-;  acende no ceu, e dali em diante o Hulk abana o rabo e uns coracaozinhos
-;  sobem dos dois -- pra sempre. Nenhum botao faz nada aqui: e o fim, e o
+;  acende no ceu, e dali em diante o Hulk abana o rabo, late de vez em
+;  quando (e os dois dao um pulinho) e uns coracaozinhos sobem dos dois --
+;  pra sempre. Nenhum botao faz nada aqui: e o fim, e o
 ;  jogo nao volta mais pro comeco.
 ;
 ;  Victor e Amanda sao as mesmas rotinas da pizzaria (monta_oam e
@@ -1682,6 +1686,14 @@ FIM_DEGRAU  = 10            ; quadros por degrau do texto acendendo
 CORACAO_X   = (FIM_VICTOR_X + 16 + FIM_AMANDA_X) / 2 - 4   ; entre os dois
 CORACAO_Y0  = FIM_CHAO - 32 - 10                            ; logo acima das cabecas
 CORACAO_SOBE = 40           ; pixels que ele sobe antes de sumir
+; o "au au" do Hulk: dois latidos, LATIDO2 quadros um depois do outro,
+; cada um com a boca aberta BOCA_QUADROS; ela da um pulinho no primeiro e
+; o Victor VICTOR_PULA quadros depois
+LATIDO2      = 14
+BOCA_QUADROS = 8
+LATE_FIM     = 30
+VICTOR_PULA  = 5
+PRIMEIRO_AU  = 90           ; logo depois do texto acender
 
 carrega_fim:
     lda #$01
@@ -1745,6 +1757,11 @@ carrega_fim:
     sta victor_x
     lda #FIM_HULK_X - FIM_CAMINHADA
     sta hulk_x
+    lda #$00
+    sta hulk_boca
+    sta lati_t
+    lda #PRIMEIRO_AU
+    sta lati_cont
     lda #60
     sta cor_espera
 
@@ -1765,12 +1782,19 @@ atualiza_fim:
     cmp #$01
     beq @acendendo
     jsr sobe_coracao
+    jsr late
 @abana:
-    lda frame_count          ; parado: o rabo vai e volta
-    and #$08
+    lda frame_count          ; parado: o rabo vai e volta (bit 3 -> 0/1)
+    lsr
+    lsr
+    lsr
+    and #$01
+    ldx hulk_boca            ; latindo: +2 (ver hulk_parado_tab)
     beq :+
-    lda #$02
-:   sta hulk_quadro
+    ora #$02
+:   tax
+    lda hulk_parado_tab, x
+    sta hulk_quadro
     jmp monta_oam_fim
 
 @andando:
@@ -1824,6 +1848,96 @@ atualiza_fim:
     bne @abana
     inc fim_fase             ; aceso: daqui pra frente, so coracaozinho
     jmp @abana
+
+; ---- de tempos em tempos o Hulk late duas vezes ("au au"), de boca
+; aberta, e os dois dao um pulinho -- ela primeiro, ele logo depois ----
+late:
+    lda lati_t
+    bne @latindo
+    dec lati_cont
+    bne @fim
+@latindo:
+    inc lati_t
+    lda lati_t               ; o som: um "au" de 5 quadros em cada latido
+    sec
+    sbc #$01
+    cmp #AU_N
+    bcc @au
+    sbc #LATIDO2 - 1         ; (carry ja 1)
+    cmp #AU_N
+    bcs @boca
+@au:
+    jsr som_au
+
+@boca:
+    ldx #$00
+    lda lati_t
+    cmp #BOCA_QUADROS + 1
+    bcc @aberta
+    cmp #LATIDO2
+    bcc @fechada
+    cmp #LATIDO2 + BOCA_QUADROS
+    bcs @fechada
+@aberta:
+    inx
+@fechada:
+    stx hulk_boca
+
+    lda lati_t               ; os pulinhos: y = chao - altura
+    sec
+    sbc #$01
+    jsr altura_pulo
+    eor #$FF
+    sec
+    adc #FIM_CHAO - 32
+    sta player_y
+    lda lati_t
+    sec
+    sbc #$01 + VICTOR_PULA
+    jsr altura_pulo
+    eor #$FF
+    sec
+    adc #FIM_CHAO - 32
+    sta victor_y
+
+    lda lati_t
+    cmp #LATE_FIM
+    bne @fim
+    lda #$00                 ; quieto de novo, por uns 3 a 4 segundos
+    sta lati_t
+    lda frame_count
+    ora #$C0
+    sta lati_cont
+@fim:
+    rts
+
+; ---- A = quadro do pulo -> A = altura (0 fora dele; "negativo" da a
+; volta e cai fora tambem) ----
+altura_pulo:
+    cmp #PULO_N
+    bcc :+
+    lda #$00
+    rts
+:   tax
+    lda pulo_tab, x
+    rts
+
+; ---- um quadro do latido (A = qual dos AU_N): o ruido no modo "curto"
+; (zumbido, como o da pimenta, so que mais grave) escorregando pra baixo
+; -- o "au" -- com o volume caindo sozinho pelo envelope do APU. O ruido
+; esta livre na cena final: a musica so usa os pulsos e o triangulo. ----
+som_au:
+    tax
+    lda au_per, x
+    sta $400E                ; so o periodo muda quadro a quadro
+    cpx #$00
+    bne @fim
+    lda #$03                 ; o primeiro quadro dispara: envelope caindo
+    sta $400C
+    lda #$00                 ; duracao de 10 quadros
+    sta $400F
+@fim:
+    rts
 
 ; ---- um coracaozinho por vez sobe do meio dos dois e some ----
 sobe_coracao:
@@ -3960,6 +4074,14 @@ vic_empe_pal:.byte 2, 2, 3, 2,  2, 2, 3, 2
 ; Hulk: 6 celulas de 8x8, na ordem de hulk_tile_tab (coluna por coluna)
 hulk_dx:     .byte 0, 0, 8, 8, 16, 16
 hulk_dy:     .byte 0, 8, 0, 8, 0, 8
+; parado: [rabo em pe, abanando, latindo rabo em pe, latindo abanando]
+hulk_parado_tab: .byte 0, 2, 3, 4
+; o pulinho dos dois quando ele late (pixels pra cima, quadro a quadro)
+pulo_tab:    .byte 1, 3, 4, 5, 5, 4, 3, 1
+PULO_N = 8
+; o "au": ruido curto ($80) do agudo pro grave
+au_per:      .byte $87, $88, $89, $8A, $8B
+AU_N = 5
 
 ; pecas da moldura, por tipo de linha: topo, meio, base
 borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5
