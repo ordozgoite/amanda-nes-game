@@ -457,5 +457,7 @@ vive na mesma folha de sprites. Nenhum botao faz nada ali.
   SER A MINHA / MELHOR COMPANHIA"). Opcoes por foto em `FOTOS`
   (`make_foto.py`): legenda em 2 linhas com "\n", `equaliza` pra foto sem
   contraste, `ceu_noite` pra trocar ceu de dia por ceu estrelado.
-- **Conversa do carro mais longa:** o Victor vai mandar os assuntos;
-  e so crescer `GRUPOS_FALA_CARRO` (`make_scene.py`).
+- **Testar no NES de verdade (Everdrive)** tudo o que entrou depois do
+  ultimo teste no console: o fade no carro (paleta escrita no NMI junto da
+  tela dividida), o latido que pega o pulso 2 emprestado, o letreiro e a
+  cena final. A conversa do carro fica como esta (decisao do Victor).
