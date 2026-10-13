@@ -378,7 +378,8 @@ def main():
     UI_BARRA_MEIA = UI_BASE + 4
     BARRA_ADDR = 0x2000 + 2*32 + 8
     VIDAS_ADDR = 0x2000 + 3*32 + 8
-    from make_jogo import BARRA_TILES, PONTOS_MIN, SALTO_MAX, PIMENTA_DESDE
+    from make_jogo import (BARRA_TILES, PONTOS_MIN, SALTO_MAX, PIMENTA_DESDE,
+                           PIMENTA_LONGE, PZ_N)
     check("uma pizza acende MEIO segmento (cada um vale duas)",
           d.bus.vram[BARRA_ADDR] == UI_BARRA_MEIA,
           f"tile {d.bus.vram[BARRA_ADDR]}")
@@ -422,21 +423,23 @@ def main():
     print("\n== 8b. O minigame: pizzas nao saltam de extremo a extremo ==")
     s = NES(ROM)
     entra_no_minigame(s, sym)
-    ativa_antes = [0, 0, 0]
-    nascimentos = []            # (tipo, x, pontos na hora)
+    ativa_antes = [0] * PZ_N
+    nascimentos = []            # (quadro, tipo, x, pontos na hora)
+    max_ativos = 0
     for quadro in range(6000):
         # o robo pega tudo que aparece, pra rodada nunca acabar por erro demais
         s.frame(robo.botao(s, sym))
-        for i in range(3):
+        for i in range(PZ_N):
             ativa = s.bus.ram[sym["pz_ativa"] + i]
             if ativa and not ativa_antes[i]:
-                nascimentos.append((s.bus.ram[sym["pz_tipo"] + i],
+                nascimentos.append((quadro, s.bus.ram[sym["pz_tipo"] + i],
                                     s.bus.ram[sym["pz_x"] + i],
                                     s.bus.ram[sym["jogo_pontos"]]))
             ativa_antes[i] = ativa
+        max_ativos = max(max_ativos, sum(ativa_antes))
         if s.bus.ram[sym["jogo_fase"]] != 0:
             break
-    pizzas = [x for t, x, _ in nascimentos if t == 0]
+    pizzas = [x for _, t, x, _ in nascimentos if t == 0]
     saltos = [abs(pizzas[i] - pizzas[i-1]) for i in range(1, len(pizzas))]
     check("pizzas suficientes nasceram pro teste valer", len(pizzas) >= 25,
           f"{len(pizzas)} pizzas")
@@ -444,20 +447,31 @@ def main():
           f"maior salto: {max(saltos) if saltos else '?'}px, x's: {pizzas}")
 
     print("\n== 8c. O minigame: as pimentas ==")
-    pimentas = [(i, x, p) for i, (t, x, p) in enumerate(nascimentos) if t == 1]
+    pimentas = [(q, x, p) for q, t, x, p in nascimentos if t == 1]
     check("pimentas cairam durante a rodada", len(pimentas) >= 3, len(pimentas))
     check(f"nenhuma antes de {PIMENTA_DESDE} pizzas (primeiro ela aprende a pegar)",
           all(p >= PIMENTA_DESDE for _, _, p in pimentas), pimentas)
-    check("nunca duas pimentas seguidas",
-          all(nascimentos[i + 1][0] == 0 for i, _, _ in pimentas if i + 1 < len(nascimentos)))
-    def pizza_depois(i):
-        return next(x for t, x, _ in nascimentos[i + 1:] if t == 0)
-    desvio = [(x + 4) - (pizza_depois(i) + 8) for i, x, _ in pimentas
-              if i + 1 < len(nascimentos)]
+    # as duas nascem na mesma passada do laco principal, mas o NMI pode cair
+    # bem no meio dela (entre nasce_pizza e nasce_pimenta) -- ai o teste,
+    # que le a RAM entre quadros, ve a pizza um quadro antes
+    pizza_de = {q: x for q, t, x, _ in nascimentos if t == 0}
+    def junto(q):
+        return pizza_de.get(q, pizza_de.get(q - 1))
+    check("toda pimenta nasce junto com uma pizza (em paralelo)",
+          all(junto(q) is not None for q, _, _ in pimentas),
+          [q for q, _, _ in pimentas if junto(q) is None])
+    longe = [abs((x + 4) - (junto(q) + 8)) for q, x, _ in pimentas if junto(q) is not None]
+    check(f"e nunca grudada nela (centros a {PIMENTA_LONGE}px ou mais)",
+          longe and min(longe) >= PIMENTA_LONGE, longe)
+    def pizza_depois(q):
+        return next((x for q2, t, x, _ in nascimentos if t == 0 and q2 > q), None)
+    desvio = [(x + 4) - (pizza_depois(q) + 8) for q, x, _ in pimentas
+              if pizza_depois(q) is not None]
     check("toda pimenta cai na coluna da proxima pizza (centro a -8..+7px)",
           desvio and all(-8 <= d <= 7 for d in desvio), desvio)
     check("toda pimenta nasce dentro da tela", all(8 <= x <= 240 for _, x, _ in pimentas),
           [x for _, x, _ in pimentas])
+    print(f"  (no maximo {max_ativos} de {PZ_N} objetos caindo ao mesmo tempo)")
     # quem ignora a pimenta e vai direto pra baixo da pizza leva na cabeca --
     # senao a pimenta seria so enfeite (a primeira versao era: caia longe de
     # onde a Amanda ia estar, e nem um robo desatento se machucava)
@@ -471,7 +485,7 @@ def main():
 
     # uma pimenta caindo em cima dela, montada na mao
     def so_uma_pimenta(nes, x, y):
-        for i in range(3):
+        for i in range(PZ_N):
             nes.bus.ram[sym["pz_ativa"] + i] = 0
         nes.bus.ram[sym["pz_ativa"]] = 1
         nes.bus.ram[sym["pz_tipo"]] = 1

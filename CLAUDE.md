@@ -316,12 +316,16 @@ Minigame das pizzas caindo, com fluxo completo:
   `BARRA_TILES` segmentos (cada um vale 2 pizzas: vazio/meio/cheio) e
   `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que overscan de
   TV de tubo corta). `PONTOS_MIN = 30`, uns 50 s de jogo.
-  **Pimentas**: a partir de `PIMENTA_DESDE` pizzas, parte do que cai e
-  pimenta -- encostou, perde vida (`som_arde`, ruido metalico); chegou no
-  chao, some. Nunca duas seguidas. Ela cai na coluna da PROXIMA pizza, uma
-  batida antes (`nasce_pimenta` ja reserva o x da pizza em `proximo_pz_x`):
-  tem que esperar do lado ela passar. Pizza e pimenta dividem os mesmos 3
-  espacos (`pz_tipo`), por causa do limite de 8 sprites por linha.
+  **Pimentas**: a partir de `PIMENTA_DESDE` pizzas, toda batida continua
+  soltando uma pizza e, as vezes, uma pimenta JUNTO (mesmo quadro), nunca
+  grudada nela (centros a `PIMENTA_LONGE` px ou mais; senao sorteia de
+  novo) -- encostou, perde vida (`som_arde`, ruido metalico); chegou no
+  chao, some. Ela mira a coluna da PROXIMA pizza (`nasce_pimenta` reserva
+  o x em `proximo_pz_x`) e cai mais devagar (`vel_pimenta_tab`, calculada
+  pra sumir `FOLGA_PIMENTA` quadros antes da proxima pizza chegar): tem que
+  esperar do lado ela passar. Pizza e pimenta dividem `PZ_N` espacos
+  (`pz_tipo`); `PZ_N` e calculado no gerador pro pior caso. `jogo.inc` e
+  incluido no TOPO do `jogo.s` por isso (o `.res PZ_N` precisa dele).
   **Curva de dificuldade** inteira em `make_jogo.py` (`espera_tab`,
   `vel_tab` em 1/16 px, `salto_tab`, `pimenta_tab`, indexadas por
   `jogo_pontos`); o assembly so le. `tools/robo.py` joga com o controle

@@ -53,8 +53,8 @@ ESPERA_INI, ESPERA_FIM = 90, 64   # quadros entre um objeto e o proximo
 VEL_INI, VEL_FIM       = 16, 48   # queda em 1/16 de pixel por quadro (1 -> 3 px)
 SALTO_MAX              = 80       # distancia maxima entre uma pizza e a anterior
 PIMENTA_DESDE          = 6        # antes disso so cai pizza: primeiro aprende a pegar
-PIMENTA_CHANCE_INI     = 0.15     # chance de sair pimenta, logo que comecam...
-PIMENTA_CHANCE_FIM     = 0.35     # ...e no fim da barra
+PIMENTA_CHANCE_INI     = 0.25     # chance de uma pimenta acompanhar a pizza, logo
+PIMENTA_CHANCE_FIM     = 0.50     # que comecam... e no fim da barra
 
 # A Amanda anda 1 pixel por quadro, e duas pizzas seguidas chegam no chao
 # `espera` quadros uma depois da outra -- entao a distancia entre elas nao
@@ -76,6 +76,48 @@ PIMENTA_TAB = [0 if p < PIMENTA_DESDE else
                for p in range(PONTOS_MIN + 1)]
 assert max(VEL_TAB) + 15 < 256 and max(PIMENTA_TAB) < 256
 assert all(s > 0 for s in SALTO_TAB)
+
+# ------------------------------------------------ a pimenta, em paralelo
+# A pimenta nasce NO MESMO QUADRO que uma pizza, mas nunca grudada nela
+# (centro a PIMENTA_LONGE px ou mais): se caissem juntas, pegar a pizza
+# seria levar a pimenta -- derrota ou derrota. Ela mira a coluna da PROXIMA
+# pizza e cai mais devagar, pra chegar la depois que a Amanda pegou esta e
+# antes da proxima: quem corre pra baixo da proxima e fica parado leva na
+# cabeca; quem espera do lado ela passar, pega. Na mesma velocidade da
+# pizza ela seria enfeite -- chegaria no chao junto com a pizza, numa
+# coluna onde a Amanda nem esta (ver a armadilha no CLAUDE.md).
+PIMENTA_LONGE = 24
+# a pimenta tem que ter sumido (passado do pe dela) FOLGA_PIMENTA quadros
+# antes da proxima pizza entrar na faixa de captura -- o tempo de entrar
+NASCE_Y       = 26                 # logo abaixo da faixa vermelha do topo
+CAPTURA_Y_MIN = CHAO_Y - 4         # a pizza conta a partir daqui...
+CAPTURA_Y_MAX = CHAO_Y + 24        # ...ate aqui (faixa generosa, e presente)
+PIMENTA_Y_MIN = CHAO_Y - 12        # a pimenta doi do cabelo...
+PIMENTA_Y_MAX = CHAO_Y + 16        # ...ate o pe; daqui pra baixo, some
+FOLGA_PIMENTA = 20
+
+def _vel_pimenta(p):
+    chega_pizza = (CAPTURA_Y_MIN - NASCE_Y) * 16 / VEL_TAB[p]   # quadros
+    some = chega_pizza + ESPERA_TAB[p] - FOLGA_PIMENTA
+    return round((PIMENTA_Y_MAX - NASCE_Y) * 16 / some)
+VEL_PIMENTA_TAB = [_vel_pimenta(p) for p in range(PONTOS_MIN + 1)]
+# mais lenta que a pizza, senao chegaria ANTES dela (em cima da Amanda
+# que esta indo pegar a pizza desta batida)
+assert all(vp < v for vp, v in zip(VEL_PIMENTA_TAB, VEL_TAB))
+
+# Quantos objetos caem ao mesmo tempo, no pior caso (toda batida com
+# pimenta). A pimenta lenta fica mais tempo na tela, entao precisa de
+# mais espacos que os 3 de quando ela so trocava de lugar com a pizza. Cabe no limite de 8 sprites por linha: as pizzas
+# ficam `espera` quadros uma da outra (>= 64 px na vertical), as pimentas
+# tambem -- numa linha so cruzam a Amanda (2), uma pizza (2) e no maximo
+# duas pimentas (1 cada).
+def _vida(vel, ate):
+    return (ate - NASCE_Y) * 16 / vel
+PZ_N = max(-(-_vida(VEL_TAB[p], CAPTURA_Y_MAX) // ESPERA_TAB[p])
+           + -(-_vida(VEL_PIMENTA_TAB[p], PIMENTA_Y_MAX) // ESPERA_TAB[p])
+           for p in range(PONTOS_MIN + 1))
+PZ_N = int(PZ_N)
+assert PZ_N <= 6, "os espacos de objeto passariam do orcamento de OAM"
 
 PALETAS = [
     [0x0F, 0x06, 0x16, 0x30],   # 0 faixa vermelha do topo (titulo + HUD)
@@ -428,6 +470,13 @@ def main():
               f"BARRA_TILES  = {BARRA_TILES}",
               f"UI_BASE      = ${UI_BASE:02X}",
               f"PIMENTA_DESDE = {PIMENTA_DESDE}",
+              f"PIMENTA_LONGE = {PIMENTA_LONGE}",
+              f"PZ_N          = {PZ_N}",
+              f"NASCE_Y       = {NASCE_Y}",
+              f"CAPTURA_Y_MIN = {CAPTURA_Y_MIN}",
+              f"CAPTURA_Y_MAX = {CAPTURA_Y_MAX}",
+              f"PIMENTA_Y_MIN = {PIMENTA_Y_MIN}",
+              f"PIMENTA_Y_MAX = {PIMENTA_Y_MAX}",
               f"INTRO_PIZZA_X       = {INTRO_PIZZA_X}",
               f"INTRO_PIZZA_OAM_Y   = {INTRO_PIZZA_OAM_Y}",
               f"INTRO_PIMENTA_X     = {INTRO_PIMENTA_X}",
@@ -436,7 +485,8 @@ def main():
               "espera_tab:  .byte " + ", ".join(map(str, ESPERA_TAB)),
               "vel_tab:     .byte " + ", ".join(map(str, VEL_TAB)),
               "salto_tab:   .byte " + ", ".join(map(str, SALTO_TAB)),
-              "pimenta_tab: .byte " + ", ".join(map(str, PIMENTA_TAB)), ""]
+              "pimenta_tab: .byte " + ", ".join(map(str, PIMENTA_TAB)),
+              "vel_pimenta_tab: .byte " + ", ".join(map(str, VEL_PIMENTA_TAB)), ""]
     open("build/jogo.inc", "w").write("\n".join(linhas))
     print(f"build/jogo.inc")
 

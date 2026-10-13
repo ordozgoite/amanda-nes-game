@@ -115,12 +115,12 @@ ATRIB_PAL2  = $AA   ; os quatro quadrantes na paleta 2
 ; "salto <= espera" (senao a pizza fica impossivel de alcancar a pe) so da
 ; pra garantir calculando as duas no mesmo lugar.
 ;
-; A pimenta cai do mesmo jeito, mas e pra DESVIAR: encostou, perde vida;
-; chegou no chao, some sem contar nada. A faixa em que ela acerta vai do
-; topo da cabeca da Amanda (player_y) ate o pe dela -- a pimenta tem 16 de
-; altura, entao comeca a contar quando a ponta encosta no cabelo.
-PIMENTA_Y_MIN   = CHAO_Y - 12
-PIMENTA_Y_MAX   = CHAO_Y + 16
+; A pimenta e pra DESVIAR: encostou, perde vida; chegou no chao, some sem
+; contar nada. A faixa em que ela acerta vai do topo da cabeca da Amanda
+; (player_y) ate o pe dela -- a pimenta tem 16 de altura, entao comeca a
+; contar quando a ponta encosta no cabelo. Essa faixa, a de captura da
+; pizza (CAPTURA_Y_*) e o NASCE_Y tambem vem do jogo.inc: a velocidade da
+; pimenta e calculada em cima delas no Python.
 ; a fraseszinha triste da derrota: nota 1 toca na hora (checa_derrota),
 ; as outras tres a cada DERROTA_PASSO quadros -- ver derrota_espera
 DERROTA_ESPERA_INICIAL = 75
@@ -137,8 +137,6 @@ VITORIA_PASSO          = 15
 VITORIA_NOTA2 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO
 VITORIA_NOTA3 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*2
 VITORIA_NOTA4 = VITORIA_ESPERA_INICIAL - VITORIA_PASSO*3
-CAPTURA_Y_MIN   = CHAO_Y - 4
-CAPTURA_Y_MAX   = CHAO_Y + 24
 ; HUD: barra de pontos (BARRA_TILES segmentos, linha 2) e vidas (ERROS_MAX
 ; iconezinhos, linha 3) -- ver desenha_barra/desenha_vidas. Comecam na
 ; coluna 8, depois do rotulo "PONTOS"/"VIDAS" (ver make_jogo.py).
@@ -153,6 +151,12 @@ UI_VIDA_VAZIA   = UI_BASE + 3
 UI_BARRA_MEIA   = UI_BASE + 4
 
 ; --------------------------------------------------------------------------
+; jogo.inc entra ANTES das variaveis: PZ_N dimensiona os .res do minigame,
+; e o ca65 so aceita constante ja conhecida ali (as tabelas dele vao pro
+; comeco do CODE, o que nao muda nada).
+.segment "CODE"
+.include "jogo.inc"
+
 .segment "HEADER"
     .byte "NES", $1A
     .byte 8                 ; 8 x 16 KB de PRG
@@ -243,22 +247,26 @@ placar_sujo: .res 1
 rng_seed:    .res 1
 ultimo_pz_x: .res 1         ; x da ultima pizza que nasceu, pra limitar o salto
                             ; (a pimenta nao mexe nele: so pizza puxa a Amanda)
-ultimo_pimenta: .res 1      ; 1 = o ultimo objeto foi pimenta -- o proximo
-                            ; e pizza na certa, nunca duas pimentas seguidas
 jogo_salto:  .res 1         ; salto_tab do momento, pro spawna_pizza
 tem_proximo: .res 1         ; 1 = uma pimenta ja escolheu onde a proxima
 proximo_pz_x: .res 1        ;     pizza nasce (ver nasce_pimenta)
 ; a queda anda em 1/16 de pixel (vel_tab vai de 16 a 48), senao so daria
 ; pra acelerar em degraus de 1 px -- de 1 pra 2 dobra a velocidade de uma vez
 jogo_sub:    .res 1         ; fracao acumulada (0-15)
-jogo_passo:  .res 1         ; pixels inteiros que todos descem neste quadro
-; os 3 "espacos" de objeto caindo sao compartilhados entre pizza e pimenta
-; (pz_tipo diz qual e) -- em vez de espacos a mais so pra pimenta, que
-; estourariam o limite de 8 sprites por linha (ver make_sprites.py)
-pz_x:        .res 3
-pz_y:        .res 3
-pz_ativa:    .res 3
-pz_tipo:     .res 3         ; 0 pizza, 1 pimenta
+jogo_passo:  .res 1         ; pixels inteiros que as pizzas descem neste quadro
+; a pimenta cai mais devagar que a pizza (vel_pimenta_tab, ver make_jogo.py),
+; entao tem a propria velocidade e a propria fracao
+pim_vel:     .res 1
+pim_sub:     .res 1
+pim_passo:   .res 1
+pim_tentativas: .res 1      ; ver nasce_pimenta
+; os PZ_N "espacos" de objeto caindo sao compartilhados entre pizza e
+; pimenta (pz_tipo diz qual e); PZ_N vem de make_jogo.py, que conta quantos
+; cabem na tela no pior caso
+pz_x:        .res PZ_N
+pz_y:        .res PZ_N
+pz_ativa:    .res PZ_N
+pz_tipo:     .res PZ_N         ; 0 pizza, 1 pimenta
 
 ; --- cena do carro ---
 ; scroll horizontal em 9 bits (0-511, as duas telas coladas -- ver
@@ -1210,12 +1218,10 @@ carrega_jogo:
     sta jogo_pontos
     sta jogo_erros
     sta jogo_venceu
-    sta pz_ativa
-    sta pz_ativa+1
-    sta pz_ativa+2
     sta jogo_sub
-    sta ultimo_pimenta
+    sta pim_sub
     sta tem_proximo
+    jsr apaga_objetos
     lda #$03                 ; aguardando o primeiro B -- ver atualiza_jogo
     sta jogo_fase
     lda #120                 ; meio da tela: a primeira pizza pode ir pros dois lados
@@ -1226,6 +1232,8 @@ carrega_jogo:
     sta jogo_vel             ; placar_sujo fica pra quando mostra_jogando
     lda salto_tab             ; trocar da intro pra tela de jogo de verdade
     sta jogo_salto
+    lda vel_pimenta_tab
+    sta pim_vel
     jsr atualiza_oam_jogo
 
     lda #TELA_JOGO
@@ -2204,11 +2212,8 @@ reinicia_jogo:
     sta jogo_pontos
     sta jogo_erros
     sta jogo_venceu
-    sta pz_ativa
-    sta pz_ativa+1
-    sta pz_ativa+2
     sta jogo_sub
-    sta ultimo_pimenta
+    sta pim_sub
     sta tem_proximo
     sta derrota_tocando        ; corta a fraseszinha triste se ainda
     lda #120                    ; estivesse tocando
@@ -2219,6 +2224,9 @@ reinicia_jogo:
     sta jogo_vel
     lda salto_tab
     sta jogo_salto
+    lda vel_pimenta_tab
+    sta pim_vel
+    jsr apaga_objetos
     lda #$01                   ; retoma o Grieg de onde musica_para deixou
     sta musica_liga             ; (so 1 byte -- musica_para nao tocou em
     jmp mostra_jogando          ; ch_ptr/ch_wait/ch_vol, nao precisa reiniciar)
@@ -2249,17 +2257,29 @@ atualiza_pizzas:
     lsr
     lsr
     sta jogo_passo
+    lda pim_sub                 ; a mesma conta pra pimenta, que tem a
+    clc                          ; propria velocidade
+    adc pim_vel
+    tay
+    and #$0F
+    sta pim_sub
+    tya
+    lsr
+    lsr
+    lsr
+    lsr
+    sta pim_passo
 
     ldx #$00
 @loop:
     lda pz_ativa, x
     beq @prox
+    lda pz_tipo, x
+    bne @desce_pimenta
     lda pz_y, x
     clc
     adc jogo_passo
     sta pz_y, x
-    ldy pz_tipo, x
-    bne @pimenta
 
     cmp #CAPTURA_Y_MIN
     bcc @prox                ; ainda caindo, nem chegou na faixa
@@ -2286,7 +2306,11 @@ atualiza_pizzas:
     jsr checa_derrota
     jmp @prox
 
-@pimenta:
+@desce_pimenta:
+    lda pz_y, x
+    clc
+    adc pim_passo
+    sta pz_y, x
     cmp #PIMENTA_Y_MIN
     bcc @prox                ; ainda longe da cabeca dela
     cmp #PIMENTA_Y_MAX
@@ -2306,8 +2330,19 @@ atualiza_pizzas:
     sta pz_ativa, x
 @prox:
     inx
-    cpx #$03
+    cpx #PZ_N
     bne @loop
+    rts
+
+; ---- tira todos os objetos da tela. Usa Y, nao X: checa_vitoria/
+; checa_derrota chamam daqui de dentro do laco de atualiza_pizzas ----
+apaga_objetos:
+    lda #$00
+    ldy #(PZ_N-1)
+@apaga:
+    sta pz_ativa, y
+    dey
+    bpl @apaga
     rts
 
 ; ---- a pizza x (indice em X) esta sobre a Amanda? carry = 1 se sim ----
@@ -2361,36 +2396,24 @@ testa_pimenta:
     clc
     rts
 
-; ---- acha um espaco livre e poe um objeto caindo no topo: quase sempre
-; pizza, as vezes pimenta (chance em pimenta_tab, que e zero no comeco) ----
+; ---- toda batida nasce uma pizza; as vezes (chance em pimenta_tab, zero
+; no comeco) nasce tambem uma pimenta, no MESMO quadro, mas longe dela ----
 spawna_pizza:
-    ldx #$00
-@procura:
-    lda pz_ativa, x
-    beq @achou
-    inx
-    cpx #$03
-    bne @procura
-    rts                        ; os tres estao ocupados, tenta de novo depois
-@achou:
-    lda ultimo_pimenta          ; nunca duas pimentas seguidas: ela tem que
-    bne @e_pizza                 ; ter sempre pizza pra correr atras
+    jsr acha_espaco
+    bcc @sem_espaco
+    jsr nasce_pizza
+
     ldy jogo_pontos
     lda pimenta_tab, y
-    beq @e_pizza                 ; ainda nas primeiras pizzas: so pizza
+    beq @dificuldade             ; ainda nas primeiras pizzas: so pizza
     sta jogo_tmp
     jsr avanca_rng
     lda rng_seed
     cmp jogo_tmp
-    bcs @e_pizza                 ; sorteio >= chance: pizza
+    bcs @dificuldade             ; sorteio >= chance: so pizza
+    jsr acha_espaco
+    bcc @dificuldade             ; tudo ocupado: fica sem pimenta desta vez
     jsr nasce_pimenta
-    lda #$01
-    sta ultimo_pimenta
-    jmp @dificuldade
-@e_pizza:
-    jsr nasce_pizza
-    lda #$00
-    sta ultimo_pimenta
 
 @dificuldade:
     ; tudo sai das tabelas do make_jogo.py, indexadas pela barra -- a curva
@@ -2402,6 +2425,25 @@ spawna_pizza:
     sta jogo_vel
     lda salto_tab, y
     sta jogo_salto
+    lda vel_pimenta_tab, y
+    sta pim_vel
+@sem_espaco:
+    rts                          ; (sem espaco: jogo_espera fica 0, tenta
+                                 ; de novo no proximo quadro)
+
+; ---- X = um espaco livre (carry = 1), ou carry = 0 se esta tudo cheio ----
+acha_espaco:
+    ldx #$00
+@procura:
+    lda pz_ativa, x
+    beq @achou
+    inx
+    cpx #PZ_N
+    bne @procura
+    clc
+    rts
+@achou:
+    sec
     rts
 
 ; ---- pizza no espaco X: no x que a pimenta ja reservou, ou num sorteado ----
@@ -2470,36 +2512,60 @@ sorteia_x_pizza:
     adc jogo_tmp                 ; x = base + deslocamento, sempre dentro da faixa
     rts
 
-; ---- pimenta no espaco X: na coluna da PROXIMA pizza, uma batida antes ----
-; A primeira versao punha a pimenta longe da ultima pizza -- e ela nunca
-; acertava ninguem: quando caia, a Amanda ja tinha passado por aquela
-; coluna a caminho da pizza seguinte (um robo que ignorava as pimentas
-; ganhava sem perder vida). Aqui a pimenta ja sorteia onde a proxima pizza
-; vai nascer (e reserva esse x em proximo_pz_x) e cai ali mesmo, `espera`
-; quadros antes dela: quem corre pra baixo da pizza e fica la parado leva a
-; pimenta na cabeca. Da pra desviar esperando do lado a pimenta passar, ou
-; pegando a pizza pela beirada (a caixa da pizza e bem mais larga que a da
-; pimenta, ver testa_pega/testa_pimenta). Nunca vem duas pimentas
-; seguidas (ver spawna_pizza), entao a reserva e sempre usada logo depois.
+; ---- pimenta no espaco X, junto com a pizza que acabou de nascer ----
+; Ela cai na coluna da PROXIMA pizza (sorteia agora onde ela vai nascer e
+; reserva em proximo_pz_x), mais devagar que a pizza (vel_pimenta_tab):
+; chega la depois que a Amanda pegou a pizza desta batida e some antes da
+; proxima. Quem corre pra baixo da proxima e fica parado leva na cabeca;
+; quem espera do lado ela passar, pega. Se a coluna sorteada ficar grudada
+; na pizza desta batida (centro a menos de PIMENTA_LONGE), sorteia de novo
+; -- as duas caindo juntas seriam derrota ou derrota. Depois de
+; PIMENTA_TENTATIVAS sem sorte, desiste da pimenta nesta batida.
+PIMENTA_TENTATIVAS = 4
 nasce_pimenta:
+    lda #PIMENTA_TENTATIVAS
+    sta pim_tentativas
+@sorteia:
     jsr sorteia_x_pizza
-    sta proximo_pz_x
-    lda #$01
-    sta tem_proximo
+    sta jogo_tmp2                 ; candidata a proxima pizza
     jsr avanca_rng               ; um tiquinho de lado, pra nao ser sempre o
     lda rng_seed                 ; mesmo centro: x = pizza - 4 + (0..15), ou
     and #$0F                     ; seja, o centro da pimenta vai de 8px a
     clc                          ; esquerda a 7px a direita do centro da pizza
-    adc proximo_pz_x              ; (pizza >= ANDA_MIN = 8: nunca fica negativo;
+    adc jogo_tmp2                 ; (pizza >= ANDA_MIN = 8: nunca fica negativo;
     sec                           ; pizza <= ANDA_MAX-16: nunca passa da tela)
     sbc #4
+    sta jogo_tmp                  ; jogo_tmp = x da pimenta
+    ; distancia entre os centros: (pimenta + 4) - (pizza + 8) = pimenta - pizza - 4
+    sec
+    sbc ultimo_pz_x               ; (a pizza desta batida)
+    bcs @direita
+    eor #$FF                      ; pimenta a esquerda: nega (dist = pizza - pimenta + 4)
+    adc #(1+4)                    ; (carry limpo: +1 completa o complemento de 2)
+    jmp @compara
+@direita:
+    sec
+    sbc #4
+    bcc @desiste                  ; ficou a menos de 4px: grudada
+@compara:
+    cmp #PIMENTA_LONGE
+    bcc @desiste
+    lda jogo_tmp2
+    sta proximo_pz_x
+    lda #$01
+    sta tem_proximo
+    lda jogo_tmp
     sta pz_x, x
     lda #$01
     sta pz_tipo, x
-    ; cai direto no nasce_no_topo
+    jmp nasce_no_topo
+@desiste:
+    dec pim_tentativas
+    bne @sorteia
+    rts
 
 nasce_no_topo:
-    lda #26                    ; nasce logo abaixo da faixa vermelha do topo
+    lda #NASCE_Y                ; logo abaixo da faixa vermelha do topo
     sta pz_y, x
     lda #$01
     sta pz_ativa, x
@@ -2528,10 +2594,9 @@ checa_vitoria:
     sta jogo_troca             ; atualiza_jogo troca a tela no topo do
                                  ; laco principal (nao daqui -- checa_vitoria
                                  ; roda dentro do laco de pizzas)
-    lda #$00                   ; esconde qualquer pizza que ainda estivesse
-    sta pz_ativa                ; caindo -- senao ela fica flutuando parada
-    sta pz_ativa+1               ; por cima da tela de vitoria/derrota
-    sta pz_ativa+2
+    jsr apaga_objetos           ; esconde qualquer pizza que ainda estivesse
+                                 ; caindo -- senao ela fica flutuando parada
+                                 ; por cima da tela de vitoria/derrota
 
     jsr musica_para              ; pausa o Grieg, mesmo esquema da derrota
     lda #$01
@@ -2575,10 +2640,8 @@ checa_derrota:
     sta jogo_fase
     lda #$01
     sta jogo_troca
-    lda #$00                   ; esconde qualquer pizza que ainda estivesse
-    sta pz_ativa                ; caindo (mesmo motivo do checa_vitoria)
-    sta pz_ativa+1
-    sta pz_ativa+2
+    jsr apaga_objetos           ; esconde qualquer pizza que ainda estivesse
+                                 ; caindo (mesmo motivo do checa_vitoria)
 
     jsr musica_para             ; pausa o Grieg -- so registrador/A, seguro
     lda #$01                    ; chamar daqui de dentro do laco de pizzas
@@ -2739,7 +2802,7 @@ atualiza_oam_jogo:
     adc #$08
     tay
     inx
-    cpx #$03
+    cpx #PZ_N
     bne @loop
     rts
 
@@ -3453,7 +3516,6 @@ paletas_carro:
 
 .include "musica.inc"
 .include "dialogo.inc"
-.include "jogo.inc"
 .include "sprites.inc"
 .include "carro.inc"
 .include "fotos.inc"

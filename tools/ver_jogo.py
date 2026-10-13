@@ -5,6 +5,7 @@ sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
 from screenshot import render
 import robo
+from make_jogo import PZ_N
 
 BTN_START, BTN_B, BTN_RIGHT = 0x08, 0x02, 0x80
 ESPERA_MENU = 70   # o respiro pro plin/eco, antes da cena carregar (ver jogo.s)
@@ -90,7 +91,7 @@ print("build/jogo-8-minigame-caindo.png")
 # depois ate ganhar
 robo.joga(nes, sym, 6000, ate=lambda n: any(
     n.bus.ram[sym["pz_ativa"] + i] and n.bus.ram[sym["pz_tipo"] + i]
-    and n.bus.ram[sym["pz_y"] + i] > 110 for i in range(3)))
+    and n.bus.ram[sym["pz_y"] + i] > 110 for i in range(PZ_N)))
 render(nes).save("build/jogo-8b-minigame-pimenta.png")
 print("build/jogo-8b-minigame-pimenta.png  pontos =", nes.bus.ram[sym["jogo_pontos"]])
 robo.joga(nes, sym, 12000, ate=lambda n: n.bus.ram[sym["jogo_fase"]] == 1)

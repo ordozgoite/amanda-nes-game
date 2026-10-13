@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, "tools")
 from nesemu import NES, load_labels
 from apu import APU, gravar_wav
+from make_jogo import PZ_N
 
 sym = load_labels("build/jogo-labels.txt")
 B, START, RIGHT = 0x02, 0x08, 0x80
@@ -43,7 +44,7 @@ nes.bus.ram[sym["player_x"]] = 8     # bem longe -- a proxima pizza cai no chao
 anda(n=200, gravando=True)           # ate errar -- grava o som_cai
 
 # uma pimenta na cabeca dela, montada na mao -- grava o som_arde
-for i in range(3):
+for i in range(PZ_N):
     nes.bus.ram[sym["pz_ativa"] + i] = 0
 nes.bus.ram[sym["pz_ativa"]] = 1
 nes.bus.ram[sym["pz_tipo"]] = 1

@@ -10,20 +10,29 @@ pra alcancar a pe, ou uma pimenta caisse em cima dela, o robo erraria.
 Estrategia: vai pra baixo da pizza mais baixa (a proxima a chegar); se uma
 pimenta estiver perto de cair e o proximo passo entraria na faixa dela,
 espera parado (ou sai de baixo, se ja estiver la). Como a pimenta cai na
-coluna da proxima pizza, uma batida antes dela, na pratica o robo chega,
-espera do lado a pimenta passar e so entao entra.
+coluna da proxima pizza, entre esta e a proxima, na pratica o robo pega
+esta, chega perto da proxima, espera do lado a pimenta passar e so entao
+entra.
 """
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from make_jogo import PZ_N, PIMENTA_Y_MIN
+
 BTN_LEFT, BTN_RIGHT = 0x40, 0x80
 
 # tem que bater com testa_pimenta em src/jogo.s: doi se
 #   player_x < pz_x + 4  e  pz_x < player_x + 12
 # (uma folga de 2px de cada lado, pro robo nao jogar no limite)
 FOLGA = 2
-ALERTA_Y = 120   # a partir daqui a pimenta ja e perigo iminente
+# a partir daqui a pimenta ja e perigo iminente: a pimenta cai no maximo
+# ~2 px/quadro e atravessar a coluna dela leva ~16 quadros. Mais alta que
+# isso, passar por baixo e seguro -- e precisa ser, porque a pimenta que
+# nasce junto com uma pizza pode estar no caminho ate ela.
+ALERTA_Y = PIMENTA_Y_MIN - 36
 
 def objetos(nes, sym):
     ram = nes.bus.ram
-    for i in range(3):
+    for i in range(PZ_N):
         if ram[sym["pz_ativa"] + i]:
             yield (ram[sym["pz_tipo"] + i], ram[sym["pz_x"] + i], ram[sym["pz_y"] + i])
 
@@ -61,7 +70,7 @@ def joga(nes, sym, quadros, ate=None, desvia=True):
     quantos quadros levou, e quantas vidas se perderam pra pimenta."""
     pimentadas = 0
     for q in range(quadros):
-        antes = {i for i in range(3) if nes.bus.ram[sym["pz_ativa"] + i]
+        antes = {i for i in range(PZ_N) if nes.bus.ram[sym["pz_ativa"] + i]
                  and nes.bus.ram[sym["pz_tipo"] + i] == 1}
         erros0 = nes.bus.ram[sym["jogo_erros"]]
         nes.frame(botao(nes, sym, desvia))
