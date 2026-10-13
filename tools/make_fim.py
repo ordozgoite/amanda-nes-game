@@ -106,6 +106,21 @@ def coracao(x0, y0, escala=2):
                     for dx in range(escala):
                         px[y0 + j * escala + dy][x0 + i * escala + dx] = 2
 
+TUFO = [
+    "3...3",
+    ".3.3.",
+    ".3.3.",
+]
+TUFO_GRANDE = [
+    "..3..",
+    "3.3.3",
+    ".333.",
+    ".333.",
+]
+# primeira linha de tile (de 2 em 2, um bloco de atributo) com a paleta
+# do gramado -- estrela que cair dali pra baixo viraria pontinho verde
+LINHA_GRAMA = ((GRAMA_TOPO - 8) // 8 - 1) & ~1
+
 def grama_topo(x):
     # um morrinho bem suave, mais alto no meio (onde os tres param)
     return GRAMA_TOPO - int(8 * math.cos((x - 128) / 128 * math.pi / 2))
@@ -114,7 +129,7 @@ def desenhar():
     # estrelas so no ceu (acima de onde o morro mais alto chega) e fora do
     # texto e da lua -- indice 3 e branco nas paletas 0 e 1
     for _ in range(60):
-        x, y = rnd(W), rnd(GRAMA_TOPO - 14)
+        x, y = rnd(W), rnd(LINHA_GRAMA * 8)
         if any(ty <= y < ty + 18 for _, ty in TEXTO):
             continue
         if 186 <= x < 222 and 94 <= y < 130:
@@ -147,13 +162,20 @@ def desenhar():
         for y in range(topo, H):
             px[y][x] = 2
         px[topo][x] = 3
-    for _ in range(110):
-        x = rnd(W)
-        y = grama_topo(x) + 3 + rnd(H - grama_topo(x) - 3)
-        px[y][x] = 3 if rnd(3) else 1
-        if y + 1 < H and px[y][x] == 3:
-            px[y + 1][x] = 3
-    linha0 = (GRAMA_TOPO - 8) // 8 - 1
+    # Tufinhos de capim, nao pontinhos: ponto claro solto no verde escuro
+    # tem a MESMA cara das estrelas, e a grama parecia transparente, com o
+    # ceu aparecendo por tras. Folha e risco em pe, entao o capim e feito
+    # de riscos verticais abrindo em leque. Os de baixo (mais perto) sao
+    # maiores que os do horizonte.
+    for _ in range(70):
+        x = 4 + rnd(W - 8)
+        y = grama_topo(x) + 6 + rnd(H - grama_topo(x) - 10)
+        tufo = TUFO_GRANDE if y > 190 else TUFO
+        for j, linha in enumerate(tufo):
+            for i, c in enumerate(linha):
+                if c == "3" and 0 <= y + j < H:
+                    px[y + j][x + i - len(linha) // 2] = 3
+    linha0 = LINHA_GRAMA
     paleta(0, linha0, 32, 30 - linha0, 2)
 
 def fatiar():
