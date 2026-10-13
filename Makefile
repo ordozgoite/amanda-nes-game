@@ -4,7 +4,8 @@ DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin build/sprite
         build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc \
         build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam \
         build/carro_nt1.nam build/carro.pal build/carro.inc build/fotos.inc \
-        build/chr_fim.bin build/fim.nam build/fim.pal build/fim.inc
+        build/chr_fim.bin build/fim.nam build/fim.pal build/fim.inc \
+        build/chr_letreiro.bin build/letreiro.inc
 
 all: $(JOGO)
 
@@ -37,7 +38,11 @@ build/chr_fim.bin build/fim.nam build/fim.pal build/fim.inc: tools/make_fim.py t
 	@mkdir -p build
 	python3 tools/make_fim.py
 
-build/fotos.inc: tools/make_foto.py tools/make_chr.py $(wildcard fotos/*)
+build/chr_letreiro.bin build/chr_letreiro_spr.bin build/letreiro.pal build/letreiro.inc: tools/make_letreiro.py tools/make_chr.py
+	@mkdir -p build
+	python3 tools/make_letreiro.py
+
+build/fotos.inc: tools/make_foto.py tools/make_chr.py tools/make_scene.py $(wildcard fotos/*)
 	@mkdir -p build
 	python3 tools/make_foto.py
 

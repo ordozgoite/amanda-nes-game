@@ -31,6 +31,7 @@ TELA_JOGO = 2
 TELA_CARRO = 3
 TELA_FOTO = 4
 TELA_FIM  = 5
+TELA_LETREIRO = 6
 
 ; ---- botoes, na ordem em que o controle os entrega ----
 BTN_A     = $80
@@ -280,12 +281,18 @@ pz_tipo:     .res PZ_N         ; 0 pizza, 1 pimenta
 carro_scroll: .res 1
 carro_nt:     .res 1
 carro_fase:   .res 1        ; 0 esperando a conversa, 1 conversando, 2 acabou (B segue),
-                            ; 3 escurecendo pra primeira foto
+                            ; 3 escurecendo pro letreiro
 carro_espera: .res 1
 
 ; --- as fotos (polaroides sepia, ver tools/make_foto.py) ---
 foto_atual:   .res 1        ; indice em foto_*_tab, 0..FOTOS_N-1
 foto_saindo:  .res 1        ; 1 = B apertado, escurecendo pra proxima
+
+; --- o letreiro "DEPOIS DISSO, O RESTO E HISTORIA." (ver tools/make_letreiro.py) ---
+let_pos:      .res 1        ; quantas letras ja sairam
+let_espera:   .res 1        ; quadros ate a proxima
+let_suja:     .res 1        ; 1 = o NMI desenha a letra let_pos-1
+let_fase:     .res 1        ; 0 digitando, 1 pronto (cursor piscando), 2 escurecendo
 
 ; --- som de rua no carro (ver ambiente_carro) ---
 amb_vuush:    .res 1        ; posicao na tabela do carro passando (0 = nenhum)
@@ -447,7 +454,12 @@ principal:
     beq @foto
     cmp #TELA_FIM
     beq @fim
+    cmp #TELA_LETREIRO
+    beq @letreiro
     jsr atualiza_carro
+    jmp principal
+@letreiro:
+    jsr atualiza_letreiro
     jmp principal
 @fim:
     jsr atualiza_fim
@@ -1444,8 +1456,8 @@ monta_oam_carro:
 ; A conversa abre sozinha depois de CARRO_ESPERA_FALA quadros; B fecha cada
 ; caixa depois que o texto termina (como na pizzaria). So quando a conversa
 ; acabou e que B segue pras fotos -- antes disso, um B apressado no comeco
-; pularia a conversa inteira. Ai a tela (e o som da rua) escurece e a
-; primeira foto clareia no lugar.
+; pularia a conversa inteira. Ai a tela (e o som da rua) escurece e vem
+; o letreiro (ver carrega_letreiro).
 atualiza_carro:
     lda carro_fase
     beq @esperando
@@ -1465,9 +1477,7 @@ atualiza_carro:
     lda fade_nivel
     cmp #FADE_PRETO
     bne @fim
-    lda #$00
-    sta foto_atual
-    jmp carrega_foto
+    jmp carrega_letreiro
 
 @esperando:
     dec carro_espera
@@ -1576,11 +1586,213 @@ passo_dialogo_carro:
     rts
 
 ; ==========================================================================
+;  Tela: o letreiro, entre o carro e as fotos. Fundo preto, sem musica, e
+;  "DEPOIS DISSO, O RESTO E HISTORIA." sendo datilografado letra a letra,
+;  com um "tec" a cada uma e um "plim" de maquina no fim. Depois um cursor
+;  fica piscando; o B escurece e a primeira foto chega com a musica.
+;  Tudo sobre o texto (onde cada letra cai, os tiles, o ritmo, o cursor)
+;  vem de tools/make_letreiro.py -- aqui so se percorre a tabela.
+; ==========================================================================
+CURSOR_OAM = 0              ; sprites 0 e 1: o traco do cursor
+
+carrega_letreiro:
+    lda #$01
+    sta carregando
+    jsr desliga_tela
+
+    jsr ambiente_desliga     ; a rua do carro cala: aqui e silencio
+
+    lda #BANCO_FIM           ; o letreiro mora no banco 0, com o menu e o fim
+    jsr troca_banco
+
+    bit PPUSTATUS
+    PPU_ADDR $1000
+    lda #<chr_letreiro
+    sta ptr
+    lda #>chr_letreiro
+    sta ptr+1
+    lda #PAGINAS_LETREIRO
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $0000
+    lda #<chr_letreiro_spr
+    sta ptr
+    lda #>chr_letreiro_spr
+    sta ptr+1
+    lda #$01
+    sta paginas
+    jsr copia_ppu
+
+    jsr limpa_nametable      ; tela preta: as letras vem uma por uma
+
+    lda #<paletas_letreiro
+    sta ptr
+    lda #>paletas_letreiro
+    sta ptr+1
+    jsr carrega_paletas
+
+    jsr esconde_sprites
+    lda #$00
+    sta let_pos
+    sta let_suja
+    sta let_fase
+    lda #LETREIRO_INICIO
+    sta let_espera
+    jsr monta_cursor
+
+    lda #TELA_LETREIRO
+    sta tela
+    lda #$00
+    sta carregando
+    jsr liga_tela
+    jmp clareia
+
+atualiza_letreiro:
+    jsr passo_fade
+    lda let_fase
+    beq @digitando
+    cmp #$01
+    beq @pronto
+
+    lda fade_nivel           ; 2: escurecendo -- no preto, a primeira foto
+    cmp #FADE_PRETO
+    bne @cursor
+    lda #$00
+    sta foto_atual
+    jmp carrega_foto
+
+@pronto:
+    lda botoes_novos
+    and #BTN_B
+    beq @cursor
+    lda #$02
+    sta let_fase
+    jsr escurece
+    jmp @cursor
+
+@digitando:                  ; B aqui nao faz nada: a frase sai inteira
+    dec let_espera
+    bne @cursor
+    ldx let_pos
+    lda let_espera_tab, x
+    sta let_espera
+    lda let_som, x           ; espaco nao faz barulho
+    beq :+
+    txa
+    jsr som_tecla
+:   inc let_pos
+    lda #$01                 ; o NMI desenha a letra que acabou de sair
+    sta let_suja
+    lda let_pos
+    cmp #LETREIRO_N
+    bne @cursor
+    lda #$01                 ; a ultima: o "plim" do fim da linha
+    sta let_fase
+    jsr som_sino
+@cursor:
+    jmp monta_cursor
+
+; ---- o cursor fica na proxima letra; digitando ele fica aceso, depois
+; pisca (meio segundo aceso, meio apagado) ----
+monta_cursor:
+    lda let_fase
+    beq @aceso
+    lda frame_count
+    and #$20
+    beq @aceso
+    lda #$FF
+    sta oam + CURSOR_OAM
+    sta oam + CURSOR_OAM + 4
+    rts
+@aceso:
+    ldx let_pos
+    lda let_cur_y, x
+    sta oam + CURSOR_OAM
+    sta oam + CURSOR_OAM + 4
+    lda #TILE_CURSOR
+    sta oam + CURSOR_OAM + 1
+    sta oam + CURSOR_OAM + 5
+    lda #$00
+    sta oam + CURSOR_OAM + 2
+    sta oam + CURSOR_OAM + 6
+    lda let_cur_x, x
+    sta oam + CURSOR_OAM + 3
+    clc
+    adc #$07                 ; dois tracos de 7px, sem vao: 14px de largura
+    sta oam + CURSOR_OAM + 7
+    rts
+
+; ---- no NMI: a letra let_pos-1 (as 2 linhas de tile dela, 2 tiles cada) ----
+escreve_tecla:
+    lda let_suja
+    beq @fim
+    lda #$00
+    sta let_suja
+    ldx let_pos
+    dex
+    bit PPUSTATUS
+    lda let_hi, x
+    sta PPUADDR
+    lda let_lo, x
+    sta PPUADDR
+    lda let_t0, x
+    sta PPUDATA
+    lda let_t1, x
+    sta PPUDATA
+    lda let_hi2, x
+    sta PPUADDR
+    lda let_lo2, x
+    sta PPUADDR
+    lda let_t2, x
+    sta PPUDATA
+    lda let_t3, x
+    sta PPUDATA
+@fim:
+    rts
+
+; ---- o "tec" da tecla: ruido agudo, curtissimo (o contador de duracao
+; do APU corta em 2 quadros). O periodo varia um pouco de tecla pra tecla
+; (A = a letra), como uma maquina de verdade, que nunca bate igual ----
+som_tecla:
+    and #$03
+    tax
+    lda #$01                 ; envelope caindo bem rapido
+    sta $400C
+    lda tecla_per, x
+    sta $400E
+    lda #$18                 ; duracao de 2 quadros
+    sta $400F
+    rts
+
+; ---- o "plim" do fim: o sino da maquina de escrever, dois pulsos (a
+; nota e a oitava dela) apagando sozinhos pelo envelope. Os pulsos estao
+; livres aqui: a musica so comeca na primeira foto ----
+som_sino:
+    lda #$84                 ; duty 50%, envelope caindo devagar
+    sta $4000
+    lda #$00
+    sta $4001
+    lda #SINO_PERIODO
+    sta $4002
+    lda #$08                 ; byte alto 0, duracao longa (o envelope apaga antes)
+    sta $4003
+    lda #$83
+    sta $4004
+    lda #$00
+    sta $4005
+    lda #SINO_PERIODO / 2    ; uma oitava acima: o brilho do sino
+    sta $4006
+    lda #$08
+    sta $4007
+    rts
+
+; ==========================================================================
 ;  Tela: as fotos -- uma polaroide sepia por vez (ver tools/make_foto.py).
 ;  Cada foto traz os proprios 256 tiles e mora num banco que o gerador
 ;  escolheu (foto_banco_tab), entao carregar e so seguir as tabelas. O
-;  refrao de "Amanda" estreia na primeira e segue sem reiniciar dali pra
-;  frente. Toda foto chega com a tela ja escura (fade_nivel = FADE_PRETO,
+;  refrao de "Amanda" estreia na primeira (o B do letreiro e que traz ela)
+;  e segue sem reiniciar dali pra frente. Toda foto chega com a tela ja escura (fade_nivel = FADE_PRETO,
 ;  ver escurece) e clareia aqui.
 ; ==========================================================================
 carrega_foto:
@@ -1588,9 +1800,8 @@ carrega_foto:
     sta carregando
     jsr desliga_tela
 
-    lda foto_atual           ; a primeira vem do carro: cala a rua e
-    bne @musica_ja_toca      ; comeca a musica
-    jsr ambiente_desliga
+    lda foto_atual           ; a primeira vem do letreiro, em silencio:
+    bne @musica_ja_toca      ; a musica comeca aqui
     lda #MUSICA_REFRAO
     jsr troca_musica
 @musica_ja_toca:
@@ -3744,6 +3955,11 @@ nmi:
     beq @scroll              ; foto parada: nada a desenhar no vblank
     cmp #TELA_FIM
     beq @scroll              ; a cena final so mexe em sprite e paleta
+    cmp #TELA_LETREIRO
+    bne @hud
+    jsr escreve_tecla
+    jmp @scroll
+@hud:
     jsr desenha_hud          ; so sobra TELA_JOGO aqui
     jmp @scroll
 @menu:
@@ -4235,6 +4451,9 @@ casal_col_oam: .byte 0, 16, 32, 48
 ; o pulinho dos dois quando ele late (pixels pra cima, quadro a quadro)
 pulo_tab:    .byte 1, 3, 4, 5, 5, 4, 3, 1
 PULO_N = 8
+; o "tec" do letreiro: periodos do ruido, um pouco diferentes por tecla
+tecla_per:   .byte $02, $03, $01, $03
+SINO_PERIODO = 84           ; 1789773 / (16 * 1319 Hz) - 1: um Mi bem agudo
 ; o "au": ruido curto ($80) do agudo pro grave
 au_per:      .byte $87, $88, $89, $8A, $8B
 AU_N = 5
@@ -4317,6 +4536,7 @@ paletas_fim:
 .include "sprites.inc"
 .include "carro.inc"
 .include "fotos.inc"
+.include "letreiro.inc"
 
 .segment "VECTORS"
     .word nmi, reset, irq

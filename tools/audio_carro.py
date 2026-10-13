@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Grava o audio do carro: o motor e a rua (com carros passando e o tique
 das letras da conversa por cima), o som abaixando junto com o fade e o
-refrao de "Amanda" estreando na primeira foto. Depois segue pelas fotos e
+letreiro datilografado em silencio (o "tec" das teclas e o "plim" no fim)
+e o refrao de "Amanda" estreando na primeira foto. Depois segue pelas fotos e
 grava a cena final (o Hulk latindo por cima do refrao) em build/fim.wav."""
 import sys
 sys.path.insert(0, "tools")
@@ -48,8 +49,14 @@ while nes.bus.ram[sym["carro_fase"]] != 2:
     anda(B, 1, gravando=True)
     ate_ler()
 anda(n=240, gravando=True)                  # mais um pouco de rua
-anda(B, 1, gravando=True)                   # escurece -> primeira foto
-anda(n=60 * 8, gravando=True)               # o refrao estreando
+anda(B, 1, gravando=True)                   # escurece -> o letreiro
+for _ in range(1200):                       # a maquina de escrever, em silencio
+    anda(gravando=True)
+    if nes.bus.ram[sym["let_fase"]] == 1:
+        break
+anda(n=90, gravando=True)                   # o "plim" e o cursor piscando
+anda(B, 1, gravando=True)                   # -> primeira foto
+anda(n=60 * 6, gravando=True)               # o refrao estreando
 
 dur, pico = gravar_wav("build/carro.wav", som)
 print(f"build/carro.wav  --  {dur:.1f} s, pico {pico:.3f}")

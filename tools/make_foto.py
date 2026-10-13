@@ -25,14 +25,17 @@ import random
 import sys
 sys.path.insert(0, "tools")
 from make_chr import FONT
+from make_scene import ACENTUADAS_CARRO
 from PIL import Image, ImageEnhance, ImageOps
 
 # ------------------------------------------------------------- as fotos
 # recorte = (x0, y0, x1, y1) em pixels da foto original; a proporcao deve
 # ser perto de FOTO_W:FOTO_H (176:128), senao a imagem estica.
-# legenda: so letras sem acento, numeros e pontuacao da fonte do jogo (mais
-# o '*' de FONTE_EXTRA); "\n" quebra em duas linhas -- uma linha so cabe
-# ~30 caracteres dentro da moldura. equaliza=True espalha os tons a forca:
+# legenda: letras, numeros e pontuacao da fonte do jogo (mais o que estiver
+# em FONTE_EXTRA, como o A~); "\n" quebra em duas linhas -- uma linha so
+# cabe ~30 caracteres dentro da moldura. As legendas sao comentarios
+# carinhosos sobre a foto, nao "o que aconteceu" (pedido do Victor: sao
+# momentos demais pra escolher os importantes). equaliza=True espalha os tons a forca:
 # pra foto sem gente e com tudo no mesmo tom medio (muro, portao, ceu
 # nublado), o ajuste normal deixava tudo num sepia lavado so.
 # ceu_noite=Y (em pixels da foto ORIGINAL): acima dessa linha, o que for
@@ -41,11 +44,11 @@ from PIL import Image, ImageEnhance, ImageOps
 FOTOS = [
     dict(arquivo="fotos/00-casa.webp", recorte=(120, 200, 1320, 1073), equaliza=True,
          ceu_noite=430,
-         legenda="GOSTEI MUITO DE TE CONHECER\n*SMACK*"),
+         legenda="ESSE LUGAR VIROU MEU\nDESTINO MAIS FREQUENTE"),
     dict(arquivo="fotos/01-mesa.jpg", recorte=(60, 430, 1080, 1172),
-         legenda="NOSSO PRIMEIRO ANO NOVO"),
+         legenda="VIVEMOS MOMENTOS\nT\xC3O BONS JUNTOS"),
     dict(arquivo="fotos/02-loja.jpg", recorte=(425, 116, 1584, 959),
-         legenda="MINHA COMPANHEIRA DE LOJA"),
+         legenda="OBRIGADO POR SER A MINHA\nMELHOR COMPANHIA"),
 ]
 
 # sepia: 0 preto (fundo da tela e sombra da foto), 1 marrom, 2 ambar, 3 creme
@@ -65,6 +68,7 @@ LEGENDA_PASSO = 10                     # 7px de letra + 3 de respiro
 # nao crescer a CHR do menu por causa de um asterisco
 FONTE_EXTRA = {
     "*": [".....", "..X..", "X.X.X", ".XXX.", "X.X.X", "..X..", "....."],
+    "\xC3": ACENTUADAS_CARRO["\xC3"],          # o mesmo A~ da conversa do carro
 }
 
 BANCOS_LIVRES = [4, 5, 6]

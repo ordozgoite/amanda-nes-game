@@ -12,7 +12,7 @@ ROM = "jogo.nes"
 BTN_A, BTN_B, BTN_SEL, BTN_START = 0x01, 0x02, 0x04, 0x08
 BTN_UP, BTN_DOWN, BTN_LEFT, BTN_RIGHT = 0x10, 0x20, 0x40, 0x80
 TODOS = 0xFF
-TELA_CARRO, TELA_FOTO, TELA_FIM = 3, 4, 5
+TELA_CARRO, TELA_FOTO, TELA_FIM, TELA_LETREIRO = 3, 4, 5, 6
 POS_VICTOR = 0x2000 + 12 * 32 + 13
 POS_AMANDA = 0x2000 + 17 * 32 + 13
 TILE_AMA_BOCA_E = 28   # ver TILE_AMA_BOCA_E em src/jogo.s -- nao e um label
@@ -653,7 +653,7 @@ def main():
           fo.bus.ram[sym["carro_fase"]] == 2 and fo.bus.ram[sym["dialogo"]] == 0 and
           bytes(fo.bus.vram[0x2040:0x2100]) == nt0[0x40:0x100])
 
-    print("\n== 9e. As fotos: B no carro escurece e abre a primeira polaroide ==")
+    print("\n== 9e. B no carro escurece pro letreiro ==")
     inc = open("build/fotos.inc").read()
     n_fotos = int(re.search(r"FOTOS_N\s*=\s*(\d+)", inc).group(1))
     banco1 = int(re.search(r"foto_banco_tab:\s*\.byte\s*(\d+)", inc).group(1))
@@ -679,11 +679,63 @@ def main():
                 break
         n.frame()
 
+    print("\n== 9e. O letreiro: \"DEPOIS DISSO, O RESTO E HISTORIA.\" ==")
+    let_inc = open("build/letreiro.inc").read()
+    let_n = int(re.search(r"LETREIRO_N\s*=\s*(\d+)", let_inc).group(1))
+    let_som = [int(v) for v in re.search(r"^let_som: .byte (.*)$", let_inc, re.M).group(1).split(", ")]
+    for _ in range(200):
+        fo.frame()
+        if fo.bus.ram[sym["tela"]] == TELA_LETREIRO:
+            break
+    check("depois do carro vem o letreiro (banco 0)",
+          fo.bus.ram[sym["tela"]] == TELA_LETREIRO and fo.bus.banco == 0,
+          f"tela={fo.bus.ram[sym['tela']]} banco={fo.bus.banco}")
+    fo.frame()
+    check("tela preta, nenhuma letra ainda", not any(fo.bus.vram[0x2000:0x23C0]))
+    check("sem musica e sem a rua: silencio",
+          fo.bus.ram[sym["musica_liga"]] == 0 and fo.bus.apu[0x08] == 0 and
+          fo.bus.apu[0x0C] & 0x1F == 0x10)
+    tecs, letras, cursor_xs = 0, [], set()
+    for _ in range(1200):
+        antes = fo.bus.ram[sym["let_pos"]]
+        fo.bus.apu[0x0F] = 0                 # marca: so um "tec" NESTE quadro reescreve
+        fo.frame(BTN_B if fo.frames % 7 == 0 else 0)   # B apressado nao pula nada
+        if fo.bus.ram[sym["let_pos"]] != antes:
+            letras.append(fo.bus.ram[sym["let_pos"]])
+            tecs += fo.bus.apu[0x0C] == 0x01 and fo.bus.apu[0x0F] == 0x18
+        if fo.bus.oam[0] < 0xEF:
+            cursor_xs.add(fo.bus.oam[3])
+        if fo.bus.ram[sym["let_fase"]] == 1:
+            break
+    fo.frame()
+    check("as letras saem uma por uma, nessa ordem", letras == list(range(1, let_n + 1)),
+          letras[:5])
+    check("cada letra (menos espaco) faz o \"tec\" da maquina",
+          tecs == sum(let_som), f"{tecs} de {sum(let_som)}")
+    check("B no meio nao pulou pra foto (o texto sai inteiro)",
+          fo.bus.ram[sym["tela"]] == TELA_LETREIRO and fo.bus.ram[sym["let_fase"]] == 1)
+    check("no fim, a frase inteira na tela, tile por tile",
+          bytes(fo.bus.vram[0x2000:0x23C0]) == open("build/letreiro.nam", "rb").read()[:960])
+    check("o \"plim\" do fim (sino nos dois pulsos)",
+          fo.bus.apu[0x00] == 0x84 and fo.bus.apu[0x04] == 0x83)
+    check("o cursor anda junto com a frase", len(cursor_xs) > 8, len(cursor_xs))
+    aceso = set()
+    for _ in range(80):
+        fo.frame()
+        aceso.add(fo.bus.oam[0] < 0xEF)
+    check("pronto, o cursor pisca", aceso == {True, False})
+    check("e continua em silencio ate o B", fo.bus.ram[sym["musica_liga"]] == 0)
+    fo.frame(BTN_START)
+    for _ in range(6): fo.frame()
+    check("START no letreiro nao faz nada", fo.bus.ram[sym["tela"]] == TELA_LETREIRO and
+          fo.bus.ram[sym["let_fase"]] == 1)
+
+    fo.frame(BTN_B)
     for _ in range(200):
         fo.frame()
         if fo.bus.ram[sym["tela"]] == TELA_FOTO:
             break
-    check("B no carro leva pra primeira foto",
+    check("B no letreiro leva pra primeira foto",
           fo.bus.ram[sym["tela"]] == TELA_FOTO and fo.bus.banco == banco1,
           f"tela={fo.bus.ram[sym['tela']]} banco={fo.bus.banco}")
     check("ela chega escura e vai clareando", fo.bus.ram[sym["fade_nivel"]] > 0)
@@ -692,7 +744,6 @@ def main():
           (fo.bus.ram[sym["ch_base_lo"]] | (fo.bus.ram[sym["ch_base_hi"]] << 8)) == sym["musica1_canal0"])
     check("no andamento escrito (o minigame acelerado nao vaza)",
           fo.bus.ram[sym["musica_vel"]] == 16, fo.bus.ram[sym["musica_vel"]])
-    check("a rua calou", fo.bus.apu[0x0C] & 0x0F == 0)
     fo.frame(BTN_B)                          # B no meio do fade nao pula a foto
     ate_trocar(fo, TELA_FOTO)
     check("B enquanto clareia nao pula a foto",

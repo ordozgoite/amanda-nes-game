@@ -140,6 +140,22 @@ for _ in range(12):
     nes.frame()
 render(nes).save("build/jogo-11d-carro-escurecendo.png")
 print("build/jogo-11d-carro-escurecendo.png  fade =", nes.bus.ram[sym["fade_nivel"]])
+ate_tela(nes, 6)                  # o letreiro, em silencio
+for _ in range(600):
+    nes.frame()
+    if nes.bus.ram[sym["let_pos"]] == 20:     # no meio da frase
+        break
+nes.frame()
+render(nes).save("build/jogo-11e-letreiro-digitando.png")
+print("build/jogo-11e-letreiro-digitando.png")
+for _ in range(600):
+    nes.frame()
+    if nes.bus.ram[sym["let_fase"]] == 1:
+        break
+nes.frame()
+render(nes).save("build/jogo-11f-letreiro.png")
+print("build/jogo-11f-letreiro.png")
+nes.frame(BTN_B)                  # so agora: a musica e a primeira foto
 ate_tela(nes, 4)
 from make_foto import FOTOS
 for n in range(1, len(FOTOS) + 1):

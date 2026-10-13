@@ -388,20 +388,36 @@ puxa assunto sozinha (caixa da direita, no ceu parado), B fecha, o Victor
 responde (caixa da esquerda). O texto fica em `GRUPOS_FALA_CARRO`
 (`make_scene.py`), no maximo `CARRO_TEXTO_MAX` linhas por caixa. So depois
 da conversa o B segue pras fotos (antes, um B apressado pularia tudo).
-Esse B escurece a tela e a rua juntas, e a primeira foto clareia.
+Esse B escurece a tela e a rua juntas, e vem o letreiro.
+
+**Letreiro** (`tela = TELA_LETREIRO`, banco 0; ver `tools/make_letreiro.py`/
+`carrega_letreiro`): tela preta, em silencio (nem musica nem rua), e
+"DEPOIS DISSO, / O RESTO É / HISTÓRIA." datilografado letra a letra em
+letra grande (16x16), com um "tec" de ruido por tecla (`som_tecla`, menos
+no espaco), ritmo irregular e pausa na virgula e na troca de linha, e um
+"plim" de sino nos dois pulsos no fim (`som_sino`). Um cursor (sprites 0 e
+1) acompanha a frase e depois pisca. B no meio nao pula; B no fim escurece
+e a primeira foto chega COM a musica. O gerador entrega tudo por letra
+(endereco, 4 tiles, som, espera, cursor); o assembly so percorre. O É e o
+Ó grandes sao desenhados a parte (`LETRA_COM_ACENTO`): na fonte de 7
+linhas o acento grudava na letra; e sem sombra, que virava circunflexo.
 
 **Fotos** (`tela = TELA_FOTO`, ver `tools/make_foto.py`/`carrega_foto`):
-B no carro abre a primeira; cada foto em `fotos/` vira uma polaroide
+B no letreiro abre a primeira; cada foto em `fotos/` vira uma polaroide
 sepia pontilhada com legenda (`FOTOS` no gerador: arquivo, recorte,
 legenda). O gerador escolhe o banco (4-6) e emite as tabelas em
 `build/fotos.inc`. B passa pra proxima (so com a foto inteira na tela,
 nunca no meio do fade); depois da ultima, a cena final. O refrao de
-"Amanda" estreia na primeira foto e continua sem reiniciar ate o fim.
+"Amanda" estreia na primeira foto e continua sem reiniciar ate o fim. As
+legendas sao comentarios carinhosos, nao "o que aconteceu" (pedido do
+Victor: sao momentos demais pra escolher os importantes, entao poucas
+fotos e uma frase fofa em cada). O Ã das legendas e o mesmo da conversa
+do carro (`ACENTUADAS_CARRO`).
 
 **Fade** (`escurece`/`clareia`/`passo_fade`): a paleta da tela fica em RAM
 (`pal_orig`, guardada por `carrega_paletas`); `calcula_fade` tira $10 de
 cada cor por degrau (abaixo de zero vira $0F) em `pal_buf`, e o NMI copia
-quando `pal_sujo` pede. Carro -> fotos -> fim, tudo passa por ele; a tela
+quando `pal_sujo` pede. Carro -> letreiro -> fotos -> fim, tudo passa por ele; a tela
 nova ja nasce escura porque `carrega_paletas` aplica o `fade_nivel` atual.
 
 **Cena final** (`tela = TELA_FIM`, `BANCO_FIM` = 0, junto do menu; ver
@@ -435,9 +451,10 @@ vive na mesma folha de sprites. Nenhum botao faz nada ali.
 
 ## Falta
 
-- **Mais fotos, se quiserem.** Hoje sao tres, nesta ordem: a casa dela a
-  noite ("GOSTEI MUITO DE TE CONHECER / *SMACK*"), "NOSSO PRIMEIRO ANO
-  NOVO" e "MINHA COMPANHEIRA DE LOJA". Opcoes por foto em `FOTOS`
+- **Fotos:** hoje sao tres, de proposito poucas, nesta ordem: a casa dela
+  a noite ("ESSE LUGAR VIROU MEU / DESTINO MAIS FREQUENTE"), o primeiro
+  ano novo ("VIVEMOS MOMENTOS / TÃO BONS JUNTOS") e a loja ("OBRIGADO POR
+  SER A MINHA / MELHOR COMPANHIA"). Opcoes por foto em `FOTOS`
   (`make_foto.py`): legenda em 2 linhas com "\n", `equaliza` pra foto sem
   contraste, `ceu_noite` pra trocar ceu de dia por ceu estrelado.
 - **Conversa do carro mais longa:** o Victor vai mandar os assuntos;
