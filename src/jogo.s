@@ -298,8 +298,8 @@ fade_cont:    .res 1        ; quadros ate o proximo degrau
 pal_sujo:     .res 1        ; 1 = o NMI copia pal_buf pro PPU
 
 ; --- cena final (ver tools/make_fim.py) ---
-fim_fase:     .res 1        ; 0 chegando andando, 1 texto acendendo, 2 parados
-fim_passos:   .res 1        ; pixels ja andados (ate FIM_CAMINHADA)
+fim_fase:     .res 1        ; FIM_HULK_ANDA .. FIM_PARADOS (ver carrega_fim)
+casal_dx:     .res 1        ; quanto o casal ainda tem que andar (0 = chegou)
 fim_cont:     .res 1
 fim_rampa:    .res 1        ; degrau do texto acendendo (ver fim_rampa1/2)
 hulk_x:       .res 1
@@ -1669,20 +1669,28 @@ atualiza_foto:
     rts
 
 ; ==========================================================================
-;  Tela: a cena final (ver tools/make_fim.py). O Victor, a Amanda e o Hulk
-;  chegam andando pela grama ate o meio da tela, "FELIZ 2 ANOS DE NAMORO"
-;  acende no ceu, e dali em diante o Hulk abana o rabo, late de vez em
-;  quando (e os dois dao um pulinho) e uns coracaozinhos sobem dos dois --
-;  pra sempre. Chegando, o Hulk ja vem latindo e pulando na frente. Nenhum botao faz nada aqui: e o fim, e o
-;  jogo nao volta mais pro comeco.
+;  Tela: a cena final (ver tools/make_fim.py). Em dois tempos, de proposito
+;  dramatica: primeiro o Hulk entra SOZINHO pela esquerda, latindo e
+;  pulando, e para perto do meio; espera, late olhando pra direita, e so
+;  entao a Amanda e o Victor entram pela direita, vindo ate ele. Ai o
+;  "FELIZ 2 ANOS DE NAMORO" acende no ceu, e dali em diante o Hulk abana o
+;  rabo, late de vez em quando (e os dois dao um pulinho) e uns
+;  coracaozinhos sobem dos dois -- pra sempre. Nenhum botao faz nada aqui:
+;  e o fim, e o jogo nao volta mais pro comeco.
 ;
 ;  Victor e Amanda sao as mesmas rotinas da pizzaria (monta_oam e
 ;  monta_oam_victor_empe, que leem player_* e victor_*), entao e so por
 ;  os numeros nas variaveis deles. O Hulk vem logo depois, nos sprites
 ;  16-21, e o coracaozinho no 22.
+;
+;  O casal anda por casal_dx (quanto falta pra chegar). Enquanto ele soma
+;  mais que 255 com o x final, aquela coluna de sprite ainda esta alem da
+;  borda direita e fica escondida (esconde_alem_da_borda) -- sem isso o x
+;  de 8 bits daria a volta e a coluna apareceria do lado ESQUERDO da tela.
 ; ==========================================================================
 HULK_OAM    = 16*4
 CORACAO_OAM = 22*4
+FIM_HULK_ESPERA = 100       ; quadros que ele fica sozinho antes do casal
 FIM_PAUSA   = 40            ; quadros parados antes do texto acender
 FIM_DEGRAU  = 10            ; quadros por degrau do texto acendendo
 CORACAO_X   = (FIM_VICTOR_X + 16 + FIM_AMANDA_X) / 2 - 4   ; entre os dois
@@ -1695,8 +1703,14 @@ LATIDO2      = 14
 BOCA_QUADROS = 8
 LATE_FIM     = 30
 VICTOR_PULA  = 5
-ENTRADA_AU   = 30           ; o primeiro "au au" sai logo que eles entram
-ENTRADA_INTERVALO = 60      ; e outro antes de chegarem no meio
+ENTRADA_AU   = 30           ; o primeiro "au au" sai logo que ele entra
+ENTRADA_INTERVALO = 50      ; e os seguintes vem logo, ate o texto acender
+; as fases (fim_fase)
+FIM_HULK_ANDA  = 0
+FIM_HULK_PARA  = 1
+FIM_CASAL_ANDA = 2
+FIM_ACENDENDO  = 3
+FIM_PARADOS    = 4
 
 carrega_fim:
     lda #$01
@@ -1735,36 +1749,31 @@ carrega_fim:
     jsr copia_ppu
 
     lda #<paletas_fim        ; chega preta (fade_nivel ainda no preto da
-    sta ptr                  ; ultima foto) e clareia ja com eles andando
+    sta ptr                  ; ultima foto) e clareia com o Hulk ja entrando
     lda #>paletas_fim
     sta ptr+1
     jsr carrega_paletas
 
     lda #$00
-    sta fim_fase
-    sta fim_passos
+    sta fim_fase             ; FIM_HULK_ANDA
     sta fim_rampa
     sta cor_y
-    sta player_dir
-    sta player_frame
+    sta player_dir           ; de frente, nunca espelhada (anda pra
+    sta player_frame         ; esquerda sem virar, igual o Victor)
     sta victor_frame
     sta hulk_quadro
     sta amanda_sentada
     sta victor_sentado
+    sta hulk_x               ; o Hulk entra pela borda esquerda
+    sta hulk_boca
+    sta hulk_pulo
+    sta au_pulso
+    sta lati_t
     lda #FIM_CHAO - 32
     sta player_y
     sta victor_y
-    lda #FIM_AMANDA_X - FIM_CAMINHADA
-    sta player_x
-    lda #FIM_VICTOR_X - FIM_CAMINHADA
-    sta victor_x
-    lda #FIM_HULK_X - FIM_CAMINHADA
-    sta hulk_x
-    lda #$00
-    sta hulk_boca
-    sta lati_t
-    sta hulk_pulo
-    sta au_pulso
+    lda #FIM_CASAL_CAMINHADA ; o casal ainda alem da borda direita
+    sta casal_dx
     lda #ENTRADA_AU
     sta lati_cont
     lda #60
@@ -1782,12 +1791,16 @@ carrega_fim:
 
 atualiza_fim:
     jsr passo_fade
+    jsr late                 ; o Hulk late em toda fase (ver late)
     lda fim_fase
-    beq @andando
-    cmp #$01
+    beq @hulk_anda
+    cmp #FIM_HULK_PARA
+    beq @hulk_para
+    cmp #FIM_CASAL_ANDA
+    beq @casal_anda
+    cmp #FIM_ACENDENDO
     beq @acendendo
     jsr sobe_coracao
-    jsr late
 @abana:
     lda frame_count          ; parado: o rabo vai e volta (bit 3 -> 0/1)
     lsr
@@ -1802,9 +1815,9 @@ atualiza_fim:
     sta hulk_quadro
     jmp monta_oam_fim
 
-@andando:
-    jsr late                 ; ele chega latindo
-    lda fim_passos           ; o Hulk troca a pata a cada 4px (perna curta);
+; ---- 1. o Hulk sozinho, da borda esquerda ate FIM_HULK_X ----
+@hulk_anda:
+    lda hulk_x               ; troca a pata a cada 4px (perna curta);
     lsr                      ; latindo, o mesmo passo de boca aberta
     lsr
     and #$01
@@ -1817,31 +1830,48 @@ atualiza_fim:
     lda frame_count          ; meio pixel por quadro: um passeio
     and #$01
     bne @desenha
-    inc player_x
-    inc victor_x
     inc hulk_x
-    inc fim_passos
-    lda fim_passos           ; os dois trocam o pe a cada 8px
+    lda hulk_x
+    cmp #FIM_HULK_X
+    bne @desenha
+    lda #FIM_HULK_ESPERA
+    sta fim_cont
+    inc fim_fase             ; FIM_HULK_PARA
+@desenha:
+    jmp monta_oam_fim
+
+; ---- 2. ele espera, abanando o rabo (e latindo, ver late) ----
+@hulk_para:
+    dec fim_cont
+    bne @abana
+    inc fim_fase             ; FIM_CASAL_ANDA
+    jmp @abana
+
+; ---- 3. o casal entra pela direita ate ele ----
+@casal_anda:
+    lda frame_count
+    and #$01
+    bne @abana
+    dec casal_dx
+    lda casal_dx             ; os dois trocam o pe a cada 8px
     lsr
     lsr
     lsr
     and #$01
     sta player_frame
     sta victor_frame
-    lda fim_passos
-    cmp #FIM_CAMINHADA
-    bne @desenha
+    lda casal_dx
+    bne @abana
     lda #$00                 ; chegaram: pes juntos
     sta player_frame
     sta victor_frame
     lda #FIM_PAUSA
     sta fim_cont
-    inc fim_fase
-@desenha:
-    jmp monta_oam_fim
+    inc fim_fase             ; FIM_ACENDENDO
+    jmp @abana
 
+; ---- 4. o texto acende ----
 @acendendo:
-    jsr late
     dec fim_cont
     bne @abana
     lda #FIM_DEGRAU
@@ -1858,13 +1888,14 @@ atualiza_fim:
     lda fim_rampa
     cmp #FIM_RAMPA_N - 1
     bne @abana_longe
-    inc fim_fase             ; aceso: daqui pra frente, so coracaozinho
+    inc fim_fase             ; FIM_PARADOS: daqui pra frente, so coracaozinho
 @abana_longe:
     jmp @abana
 
 ; ---- de tempos em tempos o Hulk late duas vezes ("au au"), de boca
-; aberta e dando um pulinho a cada "au". Com os tres ja parados, os dois
-; pulam junto -- ela primeiro, ele logo depois; andando, so ele pula ----
+; aberta e dando um pulinho a cada "au". Ate o texto acender ele late
+; seguido (ENTRADA_INTERVALO) -- ta chegando gente! Dali em diante, mais
+; calmo, e os dois pulam junto -- ela primeiro, ele logo depois ----
 late:
     lda lati_t
     bne @latindo
@@ -1910,8 +1941,9 @@ late:
     adc hulk_pulo
     sta hulk_pulo
 
-    lda fim_fase             ; andando: os dois so andam
-    beq @sem_casal
+    lda fim_fase             ; antes do texto acender os dois so andam
+    cmp #FIM_ACENDENDO
+    bcc @sem_casal
     lda lati_t               ; os pulinhos: y = chao - altura
     sec
     sbc #$01
@@ -1936,7 +1968,8 @@ late:
     lda #$00
     sta lati_t
     lda fim_fase             ; chegando: o proximo "au au" vem logo
-    bne @parados
+    cmp #FIM_PARADOS
+    bcs @parados
     lda #ENTRADA_INTERVALO
     sta lati_cont
     rts
@@ -1979,6 +2012,28 @@ som_au:
 @fim:
     rts
 
+; ---- as colunas do casal cujo x de verdade (final + casal_dx) passa de
+; 255 ainda nao entraram: esconde as 4 celulas de cada uma. Uma coluna
+; aparece quando o pixel da esquerda dela chega em 255 -- dali o proprio
+; PPU corta o resto na borda, pixel a pixel ----
+esconde_alem_da_borda:
+    ldx #$03
+@coluna:
+    lda casal_col_x, x
+    clc
+    adc casal_dx
+    bcc @dentro
+    ldy casal_col_oam, x
+    lda #$FF
+    sta oam, y
+    sta oam+4, y
+    sta oam+8, y
+    sta oam+12, y
+@dentro:
+    dex
+    bpl @coluna
+    rts
+
 ; ---- um coracaozinho por vez sobe do meio dos dois e some ----
 sobe_coracao:
     lda cor_y
@@ -2004,8 +2059,17 @@ sobe_coracao:
     rts
 
 monta_oam_fim:
+    lda #FIM_AMANDA_X        ; x de 8 bits; o que passar de 255 ainda esta
+    clc                      ; fora da tela (esconde_alem_da_borda)
+    adc casal_dx
+    sta player_x
+    lda #FIM_VICTOR_X
+    clc
+    adc casal_dx
+    sta victor_x
     jsr monta_oam            ; Amanda, sprites 0-7
     jsr monta_oam_victor_empe ; Victor, 8-15
+    jsr esconde_alem_da_borda
 
     lda hulk_quadro          ; 6 celulas por quadro em hulk_tile_tab
     asl
@@ -4164,6 +4228,10 @@ hulk_dy:     .byte 0, 8, 0, 8, 0, 8
 hulk_parado_tab: .byte 0, 2, 3, 4
 ; andando: [passo A, passo B, latindo no A, latindo no B]
 hulk_andando_tab: .byte 0, 1, 3, 5
+; as 4 colunas do casal: x final e a primeira celula na OAM (monta_oam e
+; monta_oam_victor_empe desenham coluna esquerda inteira, depois a direita)
+casal_col_x:   .byte FIM_AMANDA_X, FIM_AMANDA_X + 8, FIM_VICTOR_X, FIM_VICTOR_X + 8
+casal_col_oam: .byte 0, 16, 32, 48
 ; o pulinho dos dois quando ele late (pixels pra cima, quadro a quadro)
 pulo_tab:    .byte 1, 3, 4, 5, 5, 4, 3, 1
 PULO_N = 8

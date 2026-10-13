@@ -167,6 +167,21 @@ render(nes).save("build/jogo-15b-fim-hulk-latindo.png")
 print("build/jogo-15b-fim-hulk-latindo.png")
 for _ in range(400):
     nes.frame()
+    if nes.bus.ram[sym["fim_fase"]] == 1:      # FIM_HULK_PARA: ele sozinho, esperando
+        break
+for _ in range(40):
+    nes.frame()
+render(nes).save("build/jogo-15c-fim-hulk-esperando.png")
+print("build/jogo-15c-fim-hulk-esperando.png")
+for _ in range(600):
+    nes.frame()
+    if nes.bus.ram[sym["fim_fase"]] == 2 and nes.bus.ram[sym["casal_dx"]] <= 60:
+        break
+nes.frame()
+render(nes).save("build/jogo-15d-fim-casal-chegando.png")
+print("build/jogo-15d-fim-casal-chegando.png")
+for _ in range(400):
+    nes.frame()
     if nes.bus.ram[sym["fim_fase"]] == 2:
         break
 render(nes).save("build/jogo-16-fim.png")

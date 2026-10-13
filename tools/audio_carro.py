@@ -60,6 +60,6 @@ for _ in range(20):                         # B pelas fotos ate a cena final
     anda(B, 1)
     anda(n=100)
 som = []
-anda(n=60 * 16, gravando=True)              # chegando, o texto, uns latidos
+anda(n=60 * 20, gravando=True)              # o Hulk, o casal, o texto, uns latidos
 dur, pico = gravar_wav("build/fim.wav", som)
 print(f"build/fim.wav  --  {dur:.1f} s, pico {pico:.3f}")

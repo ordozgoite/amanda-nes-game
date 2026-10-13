@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Cena final: o Victor, a Amanda e o Hulk chegando andando num gramado, de
-noite, e "FELIZ 2 ANOS DE NAMORO" acendendo no ceu. Daqui o jogo nao sai
-mais -- e o fim (ver atualiza_fim em src/jogo.s).
+Cena final: o Hulk chega sozinho num gramado, de noite; depois o Victor e
+a Amanda chegam ate ele, e "FELIZ 2 ANOS DE NAMORO" acende no ceu. Daqui
+o jogo nao sai mais -- e o fim (ver atualiza_fim em src/jogo.s).
 
 Os tres sao sprites: Victor e Amanda sao os MESMOS desenhos da pizzaria
 (folha de make_sprites.py, com as mesmas paletas), e o Hulk tambem mora
@@ -48,13 +48,19 @@ TEXTO = [("FELIZ 2 ANOS", 32), ("DE NAMORO", 64)]
 CHAO_Y = 208               # onde ficam os pes (y do pixel logo abaixo deles)
 GRAMA_TOPO = 150           # o morrinho mais baixo; no meio ele sobe um pouco
 
-# Os tres andam da esquerda ate o meio e param. O Hulk vai na frente. A
-# distancia e a mesma pros tres (eles andam juntos), por isso so a
-# posicao final de cada um e a caminhada sao parametros.
-CAMINHADA = 96
-FIM_VICTOR_X = 104
-FIM_AMANDA_X = 124
-FIM_HULK_X = 148
+# A chegada e em dois tempos, de proposito dramatica: primeiro o Hulk
+# sozinho, entrando pela esquerda (x=0, ainda com a tela clareando) ate
+# FIM_HULK_X; ele espera, late, e so entao o casal entra pela DIREITA,
+# vindo na direcao dele (que olha pra direita). Pela direita porque o
+# hardware corta o sprite pixel a pixel na borda direita; na esquerda ele
+# so some ou aparece de 8 em 8 pixels. A Amanda para do lado do cachorro
+# dela, o Victor do lado dela.
+FIM_HULK_X = 96
+FIM_AMANDA_X = 128
+FIM_VICTOR_X = 148
+# o casal comeca com a coluna esquerda da Amanda bem na borda (x=256)
+CASAL_CAMINHADA = 256 - FIM_AMANDA_X
+assert FIM_HULK_X + 24 <= FIM_AMANDA_X and FIM_AMANDA_X + 16 <= FIM_VICTOR_X
 
 px = [[0] * W for _ in range(H)]
 attr = [[0] * (W // 16) for _ in range(H // 16)]
@@ -246,7 +252,7 @@ def main():
     linhas = ["; gerado por tools/make_fim.py -- nao edite a mao", "",
               f"PAGINAS_FIM = {paginas}",
               f"FIM_CHAO = {CHAO_Y}",
-              f"FIM_CAMINHADA = {CAMINHADA}",
+              f"FIM_CASAL_CAMINHADA = {CASAL_CAMINHADA}",
               f"FIM_VICTOR_X = {FIM_VICTOR_X}",
               f"FIM_AMANDA_X = {FIM_AMANDA_X}",
               f"FIM_HULK_X = {FIM_HULK_X}",

@@ -740,20 +740,24 @@ def main():
     fo.frame()
     check("o fundo e o da cena final, tile por tile",
           bytes(fo.bus.vram[0x2000:0x2400]) == open("build/fim.nam", "rb").read())
-    check("Victor (8) + Amanda (8) + Hulk (6) na tela", len(fo.sprites()) == 22,
-          f"{len(fo.sprites())} sprites")
+    def casal_visivel(n):
+        return [n.bus.oam[k:k + 4] for k in range(0, 64, 4) if n.bus.oam[k] < 0xEF]
+    check("no comeco so o Hulk esta na tela (o casal vem depois)",
+          len(fo.sprites()) == 6 and not casal_visivel(fo), f"{len(fo.sprites())} sprites")
     hulk = [fo.bus.oam[i:i + 4] for i in range(64, 88, 4)]
     check("o Hulk usa a paleta 2 (preto, bege, cinza)", all(s[2] & 3 == 2 for s in hulk))
+    check("e entra pela borda esquerda", fo.bus.ram[sym["hulk_x"]] < 8, fo.bus.ram[sym["hulk_x"]])
     check("o texto comeca apagado", fo.bus.vram[0x3F05] == 0x0F and fo.bus.vram[0x3F06] == 0x0F)
-    x0 = fo.bus.ram[sym["hulk_x"]]
-    quadros, pulos, aus, tons, ys_casal = set(), set(), 0, set(), set()
+    FASE_HULK_ANDA, FASE_HULK_PARA, FASE_CASAL_ANDA, FASE_ACENDENDO, FASE_PARADOS = range(5)
+    quadros, pulos, aus, tons, casal_antes = set(), set(), 0, set(), 0
     devolvido = []
     au_antes = 0
-    while fo.bus.ram[sym["fim_fase"]] == 0:
+    while fo.bus.ram[sym["fim_fase"]] < FASE_CASAL_ANDA:
         fo.frame()
-        quadros.add(fo.bus.ram[sym["hulk_quadro"]])
+        if fo.bus.ram[sym["fim_fase"]] == FASE_HULK_ANDA:
+            quadros.add(fo.bus.ram[sym["hulk_quadro"]])
         pulos.add(fo.bus.ram[sym["hulk_pulo"]])
-        ys_casal.add((fo.bus.ram[sym["player_y"]], fo.bus.ram[sym["victor_y"]]))
+        casal_antes += len(casal_visivel(fo))
         au = fo.bus.ram[sym["au_pulso"]]
         if au:
             tons.add(fo.bus.apu[0x06] | ((fo.bus.apu[0x07] & 7) << 8))
@@ -766,29 +770,42 @@ def main():
                              (fo.bus.apu[0x06] | ((fo.bus.apu[0x07] & 7) << 8)) == esperado)
         aus += au and not au_antes
         au_antes = au
-    check("os tres andam juntos pra direita",
-          fo.bus.ram[sym["hulk_x"]] > x0 and
-          fo.bus.ram[sym["player_x"]] - fo.bus.ram[sym["victor_x"]] == const("FIM_AMANDA_X") - const("FIM_VICTOR_X"),
-          f"{x0} -> {fo.bus.ram[sym['hulk_x']]}")
-    check("o Hulk troca as patinhas andando", {0, 1} <= quadros, sorted(quadros))
+    check("o Hulk anda sozinho ate perto do meio e para",
+          fo.bus.ram[sym["hulk_x"]] == const("FIM_HULK_X"), fo.bus.ram[sym["hulk_x"]])
+    check("e o casal nem apareceu enquanto isso", casal_antes == 0, casal_antes)
+    check("ele troca as patinhas andando", {0, 1} <= quadros, sorted(quadros))
     check("e chega latindo, de boca aberta andando (quadros 3 e 5)",
           {3, 5} <= quadros, sorted(quadros))
-    check("dois \"au au\" na entrada (4 latidos)", aus == 4, aus)
-    check("o Hulk pula a cada latido", max(pulos) >= 4, sorted(pulos))
-    check("andando, os dois nao pulam (so ele)",
-          ys_casal == {(const("FIM_CHAO") - 32, const("FIM_CHAO") - 32)}, ys_casal)
+    check("varios latidos antes do casal chegar", aus >= 4, aus)
+    check("ele pula a cada latido", max(pulos) >= 4, sorted(pulos))
     check("o \"au\" tem tom: o pulso 2 cai de agudo pra grave",
           tons and min(tons) < 130 and max(tons) > 200, sorted(tons))
     check("depois de cada \"au\", o pulso 2 volta pra nota da musica",
           devolvido and all(devolvido), devolvido)
+
+    ys_casal, xs_casal, colunas = set(), set(), set()
+    while fo.bus.ram[sym["fim_fase"]] == FASE_CASAL_ANDA:
+        fo.frame()
+        ys_casal.add((fo.bus.ram[sym["player_y"]], fo.bus.ram[sym["victor_y"]]))
+        vis = casal_visivel(fo)
+        xs_casal |= {c[3] for c in vis}
+        colunas.add(len(vis) // 4)
+    fo.frame()
+    check("o casal entra pela direita, sem nenhuma coluna dando a volta pra esquerda",
+          min(xs_casal) >= const("FIM_AMANDA_X"), sorted(xs_casal)[:4])
+    check("uma coluna de cada vez vai entrando", colunas >= {0, 1, 2, 3, 4}, sorted(colunas))
+    check("andando, os dois nao pulam",
+          ys_casal == {(const("FIM_CHAO") - 32, const("FIM_CHAO") - 32)}, ys_casal)
     for _ in range(600):
         fo.frame()
-        if fo.bus.ram[sym["fim_fase"]] == 2:
+        if fo.bus.ram[sym["fim_fase"]] == FASE_PARADOS:
             break
     fo.frame()
-    check("param no meio, cada um no seu lugar",
-          (fo.bus.ram[sym["victor_x"]], fo.bus.ram[sym["player_x"]], fo.bus.ram[sym["hulk_x"]]) ==
-          (const("FIM_VICTOR_X"), const("FIM_AMANDA_X"), const("FIM_HULK_X")))
+    check("Victor (8) + Amanda (8) + Hulk (6) na tela", len(fo.sprites()) == 22,
+          f"{len(fo.sprites())} sprites")
+    check("param do lado dele, cada um no seu lugar",
+          (fo.bus.ram[sym["hulk_x"]], fo.bus.ram[sym["player_x"]], fo.bus.ram[sym["victor_x"]]) ==
+          (const("FIM_HULK_X"), const("FIM_AMANDA_X"), const("FIM_VICTOR_X")))
     rampa = [re.search(rf"^fim_rampa{k}: .byte (.*)$", fim_inc, re.M).group(1).split(", ")[-1]
              for k in (1, 2)]
     check("\"FELIZ 2 ANOS DE NAMORO\" acende (as cores finais do texto)",
