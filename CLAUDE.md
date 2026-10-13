@@ -9,7 +9,7 @@ anda pela pizzaria onde os dois se conheceram e conversa com o Victor.
 make            # gera jogo.nes na raiz
 make test       # test_jogo.py + test_musica.py -- rode SEMPRE apos mexer
 make capturas   # telas em build/
-make audio      # musica e fala em .wav, pra conferir de ouvido
+make audio      # musica, fala e som do carro em .wav, pra conferir de ouvido
 make rodar      # abre no fceux
 ```
 
@@ -287,6 +287,10 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   laco principal monta a copia em RAM, e so o DMA do NMI seguinte leva pro
   PPU. Teste que mexe em RAM e le `bus.oam` depois de um `frame()` so ve o
   quadro anterior.
+- **Paleta mexida no laco principal tambem leva um quadro pra aparecer.**
+  `passo_fade` calcula a paleta nova e so o NMI seguinte copia pro PPU:
+  teste (ou captura) que para quando `fade_nivel` chega em 0 ainda ve o
+  degrau anterior. Espere mais um `frame()`.
 - **A CHR da pizzaria esta cheia (256), a do carro nao.** Os acentos da
   conversa do carro (Ã, É) so existem la, logo abaixo de `DLG_BASE`
   (`ACENTOS_CARRO` em `make_scene.py`); o resto da fonte e da moldura usa
@@ -294,6 +298,11 @@ Ao mexer em qualquer coisa, rode `make test` e gere uma captura.
   duas sem traducao.
 
 ## Estado atual
+
+**Nao existe volta pro menu.** Depois do START no titulo, nenhum botao
+leva de volta ao comeco -- nem na pizzaria, nem na derrota, nem no carro,
+nas fotos ou no fim (pedido do Victor, "em hipotese nenhuma"). So o RESET
+do console reinicia. Os testes conferem isso em cada tela.
 
 Pronto: tela de titulo (em silencio -- START toca um "plin" e leva pra
 pizzaria, que so ai comeca a musica), cenario da pizzaria, dialogo completo
@@ -346,8 +355,7 @@ Minigame das pizzas caindo, com fluxo completo:
   grande e triste (fundo, nao sprite -- "zoom" que o sprite normal nao
   comporta) com uma fraseszinha triste de 4 notas (B3-G3-E3-D3, uma vez so;
   ver `TRISTE`/`toca_triste1..4`). B reseta e tenta de novo NA HORA, sem
-  voltar pro menu (perderia o progresso da conversa); START ainda desiste
-  pro menu se ela quiser.
+  voltar pro menu (perderia o progresso da conversa). START nao faz nada.
 
 **Cena do carro** (`tela = TELA_CARRO`, banco `BANCO_CARRO`, ver
 `tools/make_carro.py`/`carrega_carro` em `src/jogo.s`): os dois indo pra
@@ -367,23 +375,45 @@ deslizando atras dele em rolagem de hardware continua (loop de 512px sem
 costura visivel). A silhueta nao e um retangulo uniforme -- os sprites
 vem de uma tabela de posicao/tile/paleta gerada por `make_carro.py` e
 consumida por `monta_oam_carro`, nao de um loop fixo (ver armadilha da
-silhueta irregular abaixo). START volta pro menu. Toca o refrao de
-"Amanda" (que segue pelas fotos).
+silhueta irregular abaixo). **Sem musica:** toca a rua
+(`ambiente_carro`) -- motor no triangulo bem grave com uma oscilacao lenta,
+pneu no ruido baixinho, e de tempos em tempos um carro passando (o ruido
+sobe e desce, escorregando de agudo pra grave). As tabelas vem de
+`som_da_rua()` em `make_carro.py`. O tique das letras tambem e no ruido:
+no quadro em que uma letra sai, a rua cede o canal. `make audio` grava
+`build/carro.wav`.
 
 **Conversa no carro:** depois de `CARRO_ESPERA_FALA` quadros a Amanda
 puxa assunto sozinha (caixa da direita, no ceu parado), B fecha, o Victor
 responde (caixa da esquerda). O texto fica em `GRUPOS_FALA_CARRO`
 (`make_scene.py`), no maximo `CARRO_TEXTO_MAX` linhas por caixa. So depois
 da conversa o B segue pras fotos (antes, um B apressado pularia tudo).
+Esse B escurece a tela e a rua juntas, e a primeira foto clareia.
 
 **Fotos** (`tela = TELA_FOTO`, ver `tools/make_foto.py`/`carrega_foto`):
 B no carro abre a primeira; cada foto em `fotos/` vira uma polaroide
 sepia pontilhada com legenda (`FOTOS` no gerador: arquivo, recorte,
 legenda). O gerador escolhe o banco (4-6) e emite as tabelas em
-`build/fotos.inc`. B passa pra proxima; depois da ultima, volta pro menu
-(provisorio, ate existir a cena final). A musica do carro em diante e o
-refrao de "Amanda" -- que so estreia ali, depois do minigame -- e continua
-tocando sem reiniciar entre as fotos.
+`build/fotos.inc`. B passa pra proxima (so com a foto inteira na tela,
+nunca no meio do fade); depois da ultima, a cena final. O refrao de
+"Amanda" estreia na primeira foto e continua sem reiniciar ate o fim.
+
+**Fade** (`escurece`/`clareia`/`passo_fade`): a paleta da tela fica em RAM
+(`pal_orig`, guardada por `carrega_paletas`); `calcula_fade` tira $10 de
+cada cor por degrau (abaixo de zero vira $0F) em `pal_buf`, e o NMI copia
+quando `pal_sujo` pede. Carro -> fotos -> fim, tudo passa por ele; a tela
+nova ja nasce escura porque `carrega_paletas` aplica o `fade_nivel` atual.
+
+**Cena final** (`tela = TELA_FIM`, `BANCO_FIM` = 0, junto do menu; ver
+`tools/make_fim.py`/`carrega_fim`): gramado de noite, lua, estrelas. Victor,
+Amanda e o Hulk (cachorro dela) chegam andando juntos ate o meio, o
+"FELIZ 2 ANOS DE NAMORO" acende (so a paleta 1 do fundo muda, pela
+`RAMPA_TEXTO` -- o texto ja esta na nametable desde o comeco), e dali o
+Hulk abana o rabo e uns coracaozinhos sobem dos dois, pra sempre. Victor e
+Amanda sao as rotinas da pizzaria (`monta_oam`, `monta_oam_victor_empe`);
+o Hulk (`HULK_*` em `make_sprites.py`, 24x16, paleta 2: preto/bege/cinza,
+tres quadros: dois de passo e um abanando) vive na mesma folha de sprites.
+Nenhum botao faz nada ali.
 
 ## Falta
 
@@ -392,6 +422,5 @@ tocando sem reiniciar entre as fotos.
   NOVO" e "MINHA COMPANHEIRA DE LOJA". Opcoes por foto em `FOTOS`
   (`make_foto.py`): legenda em 2 linhas com "\n", `equaliza` pra foto sem
   contraste, `ceu_noite` pra trocar ceu de dia por ceu estrelado.
-- **Cena final:** Victor, Amanda e o Hulk (cachorro dela, sprite andando)
-  com "FELIZ 2 ANOS DE NAMORO".
-- Transicao (fade) entre carro e fotos, se ficar seco.
+- **Conversa do carro mais longa:** o Victor vai mandar os assuntos;
+  e so crescer `GRUPOS_FALA_CARRO` (`make_scene.py`).

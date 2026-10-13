@@ -270,6 +270,64 @@ PIMENTA = [
     ".2......",
 ]
 
+# ---- o Hulk, cachorro dela, na cena final: 24x16, de perfil pra direita ----
+# Um pinscher pretinho: orelhonas em pe, a "sobrancelha" e o focinho cor
+# de caramelo, peito claro e as patas pintadinhas de branco. Usa a paleta
+# 2 (a da cabeca do Victor): 1 = preto, 2 = bege, 3 = cinza -- exatamente
+# as tres cores dele, sem gastar paleta nova (as 4 ja estao tomadas).
+# Tres quadros: dois de passo (A/B) e um parado abanando o rabo (C = pernas
+# do A com o rabo do B); so os tiles que mudam viram tile novo.
+HULK_CORPO = [
+    "..............1....1....",                                   # pontas das orelhas
+    "..............11..11....",
+    "..............121.121...",                                   # orelha por dentro
+    "..............1211121...",
+    "..............11111111..",
+    "..............11211211..",                                   # sobrancelhas
+    "..............111111221.",                                   # focinho + nariz
+]
+HULK_RABO_EMPE = [
+    "...1..........11111222..",
+    "...1.........1111122....",
+]
+HULK_RABO_DEITADO = [
+    "..1...........11111222..",
+    "...1.........1111122....",
+]
+HULK_TRONCO = [
+    "....11111111111111122...",                                   # peito claro
+    "....1111111111111122....",
+    "....111111111111112.....",
+]
+HULK_PATAS_A = [
+    "....13.13.....13.13.....",
+    "....13.13.....13.13.....",
+    "....13.13.....13.13.....",
+    "....33.33.....33.33.....",
+]
+HULK_PATAS_B = [
+    "...13...13...13...13....",
+    "...13...13...13...13....",
+    "..13.....13.13.....13...",
+    "..33.....33.33.....33...",
+]
+HULK_A = HULK_CORPO + HULK_RABO_EMPE + HULK_TRONCO + HULK_PATAS_A
+HULK_B = HULK_CORPO + HULK_RABO_DEITADO + HULK_TRONCO + HULK_PATAS_B
+HULK_C = HULK_CORPO + HULK_RABO_DEITADO + HULK_TRONCO + HULK_PATAS_A
+
+# ---- coracaozinho que sobe dos dois na cena final (8x8) ----
+# indice 3 da paleta 0 -- o rosa do laco dela
+CORACAOZINHO = [
+    ".33.33..",
+    "3333333.",
+    "3333333.",
+    ".33333..",
+    "..333...",
+    "...3....",
+    "........",
+    "........",
+]
+
 # ---- o aviso de "aperte B", que flutua sobre a cabeca dele ----
 LETRA_B = ["111.", "1..1", "111.", "1..1", "111."]
 
@@ -296,6 +354,20 @@ def fatiar(arte, largura=16):
         for lin in range(0, alt, 8):
             tiles.append([arte[lin + j][col:col + 8] for j in range(8)])
     return tiles
+
+def hulk_tiles():
+    """(tiles unicos, [indices por quadro]) -- celulas na ordem de fatiar
+    (coluna esquerda de cima a baixo, depois a do meio, depois a direita)."""
+    unicos, por_quadro = [], []
+    for arte in (HULK_A, HULK_B, HULK_C):
+        assert len(arte) == 16 and all(len(l) == 24 for l in arte)
+        idx = []
+        for t in fatiar(arte, 24):
+            if t not in unicos:
+                unicos.append(t)
+            idx.append(TILE_HULK + unicos.index(t))
+        por_quadro.append(idx)
+    return unicos, por_quadro
 
 def build():
     amanda_a = AMANDA_CABECA + AMANDA_TRONCO + AMANDA_PERNAS_A
@@ -341,6 +413,13 @@ def build():
     for t in fatiar(PIMENTA, 8):                # tiles 48-49: a pimenta
         saida.append(encode_tile(t))
 
+    saida.append(encode_tile(CORACAOZINHO))      # tile 50: o coracaozinho
+    # o Hulk: os tres quadros dividem tile sempre que a celula e igual
+    # (a cabeca e o tronco quase nunca mudam) -- hulk_tiles() diz qual
+    # tile cada celula de cada quadro usa
+    for t in hulk_tiles()[0]:
+        saida.append(encode_tile(t))
+
     while len(saida) % 16:                      # completa a pagina de 256 bytes
         saida.append(BLANK)
     return b"".join(saida)
@@ -351,6 +430,8 @@ def build():
 # de fora da CHR sem avisar nada
 TILE_PIZZA   = 26
 TILE_PIMENTA = 48
+TILE_CORACAOZINHO = 50
+TILE_HULK    = 51
 
 if __name__ == "__main__":
     destino = sys.argv[1] if len(sys.argv) > 1 else "build/chr_sprites.bin"
@@ -366,9 +447,14 @@ if __name__ == "__main__":
         "; gerado por tools/make_sprites.py -- nao edite a mao", "",
         f"PAGINAS_SPRITES = {paginas}",
         f"TILE_PIZZA      = {TILE_PIZZA}",
-        f"TILE_PIMENTA    = {TILE_PIMENTA}", ""]))
+        f"TILE_PIMENTA    = {TILE_PIMENTA}",
+        f"TILE_CORACAOZINHO = {TILE_CORACAOZINHO}", "",
+        "; o Hulk: 6 celulas por quadro (coluna esquerda, meio, direita;",
+        "; cada uma de cima pra baixo), quadros A e B de passo e C parado",
+        "hulk_tile_tab: .byte " + ", ".join(str(t) for q in hulk_tiles()[1] for t in q),
+        ""]))
     print(f"sprites: {destino} ({len(d)} bytes, {paginas} paginas) -- Amanda 0-15, "
           f"Victor sentado 16-21, boca aberta 22-23, aviso B 24-25, pizza 26-27, "
           f"boca da Amanda aberta 28-29, Victor em pe 30-45, boca aberta 46-47, "
-          f"pimenta 48-49")
+          f"pimenta 48-49, coracaozinho 50, Hulk {TILE_HULK}-{TILE_HULK + len(hulk_tiles()[0]) - 1}")
     print(f"{inc}")

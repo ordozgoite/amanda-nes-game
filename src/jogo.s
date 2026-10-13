@@ -22,6 +22,7 @@ BANCO_MENU = 0
 BANCO_CENA = 1
 BANCO_JOGO = 2
 BANCO_CARRO = 3
+BANCO_FIM   = 0       ; a cena final divide o banco com o menu (sobra espaco)
 
 ; ---- telas ----
 TELA_MENU = 0
@@ -29,6 +30,7 @@ TELA_CENA = 1
 TELA_JOGO = 2
 TELA_CARRO = 3
 TELA_FOTO = 4
+TELA_FIM  = 5
 
 ; ---- botoes, na ordem em que o controle os entrega ----
 BTN_A     = $80
@@ -156,6 +158,7 @@ UI_BARRA_MEIA   = UI_BASE + 4
 ; comeco do CODE, o que nao muda nada).
 .segment "CODE"
 .include "jogo.inc"
+.include "fim.inc"          ; idem: as posicoes da cena final entram em constantes
 
 .segment "HEADER"
     .byte "NES", $1A
@@ -276,11 +279,33 @@ pz_tipo:     .res PZ_N         ; 0 pizza, 1 pimenta
 ; ficar suave mesmo sem nada rodando no laco principal.
 carro_scroll: .res 1
 carro_nt:     .res 1
-carro_fase:   .res 1        ; 0 esperando a conversa, 1 conversando, 2 acabou (B segue)
+carro_fase:   .res 1        ; 0 esperando a conversa, 1 conversando, 2 acabou (B segue),
+                            ; 3 escurecendo pra primeira foto
 carro_espera: .res 1
 
 ; --- as fotos (polaroides sepia, ver tools/make_foto.py) ---
 foto_atual:   .res 1        ; indice em foto_*_tab, 0..FOTOS_N-1
+foto_saindo:  .res 1        ; 1 = B apertado, escurecendo pra proxima
+
+; --- som de rua no carro (ver ambiente_carro) ---
+amb_vuush:    .res 1        ; posicao na tabela do carro passando (0 = nenhum)
+amb_espera:   .res 1        ; quadros ate o proximo carro passar
+
+; --- escurecer/clarear a tela (ver passo_fade) ---
+fade_nivel:   .res 1        ; 0 = cores de verdade ... FADE_PRETO = tudo preto
+fade_alvo:    .res 1        ; pra onde fade_nivel esta andando
+fade_cont:    .res 1        ; quadros ate o proximo degrau
+pal_sujo:     .res 1        ; 1 = o NMI copia pal_buf pro PPU
+
+; --- cena final (ver tools/make_fim.py) ---
+fim_fase:     .res 1        ; 0 chegando andando, 1 texto acendendo, 2 parados
+fim_passos:   .res 1        ; pixels ja andados (ate FIM_CAMINHADA)
+fim_cont:     .res 1
+fim_rampa:    .res 1        ; degrau do texto acendendo (ver fim_rampa1/2)
+hulk_x:       .res 1
+hulk_quadro:  .res 1        ; 0/1 passo, 2 parado abanando o rabo
+cor_y:        .res 1        ; o coracaozinho subindo (0 = escondido)
+cor_espera:   .res 1
 
 ; --- musica ---
 musica_liga: .res 1         ; 0 = motor desligado (menu, em silencio)
@@ -298,6 +323,13 @@ musica_passos: .res 1
 
 .segment "OAM"
 oam:         .res 256
+
+; As paletas da tela ficam numa copia em RAM pra poder escurecer: pal_orig
+; e a de verdade (carrega_paletas guarda), pal_buf e a que vai pro PPU
+; (calcula_fade escreve, o NMI copia quando pal_sujo pede).
+.segment "BSS"
+pal_orig:    .res 32
+pal_buf:     .res 32
 
 ; --------------------------------------------------------------------------
 ;  Dados das telas, nos bancos que entram e saem
@@ -323,6 +355,11 @@ chr_carro:         .incbin "chr_carro.bin"         ; ceu, predios, rua (4 pagina
 chr_sprites_carro:  .incbin "chr_sprites_carro.bin"  ; carro + as duas cabecas
 nam_carro0:        .incbin "carro_nt0.nam"         ; metade esquerda (vai em $2000)
 nam_carro1:        .incbin "carro_nt1.nam"         ; metade direita (vai em $2400)
+
+.segment "BANK0"
+chr_fim:           .incbin "chr_fim.bin"           ; ceu, lua, texto, gramado
+chr_sprites_fim:   .incbin "chr_sprites.bin"       ; a mesma folha da pizzaria (com o Hulk)
+nam_fim:           .incbin "fim.nam"
 
 ; ==========================================================================
 .segment "CODE"
@@ -403,7 +440,12 @@ principal:
     beq @jogo
     cmp #TELA_FOTO
     beq @foto
+    cmp #TELA_FIM
+    beq @fim
     jsr atualiza_carro
+    jmp principal
+@fim:
+    jsr atualiza_fim
     jmp principal
 @foto:
     jsr atualiza_foto
@@ -669,13 +711,10 @@ atualiza_cena:
     jsr boca_amanda
     jmp aviso_b
 
+; Depois do titulo nao existe mais caminho de volta pro menu (pedido do
+; Victor: o presente e pra ser vivido do comeco ao fim, uma vez). START so
+; vale no titulo.
 @livre:
-    lda botoes_novos
-    and #BTN_START
-    beq @anda
-    jmp carrega_menu        ; START volta pro titulo
-
-@anda:
     jsr move_jogador
 
     jsr calcula_perto
@@ -1284,8 +1323,8 @@ carrega_carro:
     lda #BANCO_CARRO
     jsr troca_banco
 
-    lda #MUSICA_REFRAO       ; o refrao de "Amanda" estreia aqui e segue ate
-    jsr troca_musica         ; o fim do jogo (as fotos nao trocam a musica)
+    jsr musica_para          ; no carro nao tem musica: so o motor e a rua
+    jsr ambiente_liga        ; (o refrao de "Amanda" estreia na 1a foto)
 
     bit PPUSTATUS            ; ceu/predios/rua -> pattern table 1 (fundo)
     PPU_ADDR $1000
@@ -1400,22 +1439,27 @@ monta_oam_carro:
 ; A conversa abre sozinha depois de CARRO_ESPERA_FALA quadros; B fecha cada
 ; caixa depois que o texto termina (como na pizzaria). So quando a conversa
 ; acabou e que B segue pras fotos -- antes disso, um B apressado no comeco
-; pularia a conversa inteira. START desiste pro menu a qualquer momento.
+; pularia a conversa inteira. Ai a tela (e o som da rua) escurece e a
+; primeira foto clareia no lugar.
 atualiza_carro:
-    lda botoes_novos
-    and #BTN_START
-    beq @sem_start
-    lda #$00                  ; o menu nao sabe nada da conversa do carro:
-    sta dialogo               ; sem isso o NMI da proxima tela acharia uma
-    jmp carrega_menu          ; caixa "aberta" que nao existe
-@sem_start:
     lda carro_fase
     beq @esperando
     cmp #$01
     beq @conversando
+    cmp #$03
+    beq @escurecendo
     lda botoes_novos          ; fase 2: a conversa acabou
     and #BTN_B
     beq @fim
+    lda #$03
+    sta carro_fase
+    jmp escurece
+
+@escurecendo:
+    jsr passo_fade
+    lda fade_nivel
+    cmp #FADE_PRETO
+    bne @fim
     lda #$00
     sta foto_atual
     jmp carrega_foto
@@ -1529,13 +1573,22 @@ passo_dialogo_carro:
 ; ==========================================================================
 ;  Tela: as fotos -- uma polaroide sepia por vez (ver tools/make_foto.py).
 ;  Cada foto traz os proprios 256 tiles e mora num banco que o gerador
-;  escolheu (foto_banco_tab), entao carregar e so seguir as tabelas. A
-;  musica NAO muda aqui: o refrao que comecou no carro continua tocando.
+;  escolheu (foto_banco_tab), entao carregar e so seguir as tabelas. O
+;  refrao de "Amanda" estreia na primeira e segue sem reiniciar dali pra
+;  frente. Toda foto chega com a tela ja escura (fade_nivel = FADE_PRETO,
+;  ver escurece) e clareia aqui.
 ; ==========================================================================
 carrega_foto:
     lda #$01
     sta carregando
     jsr desliga_tela
+
+    lda foto_atual           ; a primeira vem do carro: cala a rua e
+    bne @musica_ja_toca      ; comeca a musica
+    jsr ambiente_desliga
+    lda #MUSICA_REFRAO
+    jsr troca_musica
+@musica_ja_toca:
 
     ldx foto_atual
     lda foto_banco_tab, x
@@ -1570,29 +1623,286 @@ carrega_foto:
 
     jsr esconde_sprites      ; sem sprites -- sobrava o carro na OAM
 
+    lda #$00
+    sta foto_saindo
+    sta dialogo              ; o NMI do carro nao deixou caixa nenhuma, mas
+                             ; a foto nao pode herdar uma
     lda #TELA_FOTO
     sta tela
     lda #$00
     sta carregando
-    jmp liga_tela
+    jsr liga_tela
+    jmp clareia
 
-; ---- B passa pra proxima foto; depois da ultima, volta pro menu (por
-; enquanto -- a cena final com o Hulk entra aqui) ----
+; ---- B escurece e passa pra proxima foto; depois da ultima, a cena
+; final. So aceita B com a foto inteira na tela (nada de pular durante o
+; fade, que deixaria a proxima chegar pela metade). ----
 atualiza_foto:
-    lda botoes_novos
-    and #BTN_START
-    bne @menu
+    jsr passo_fade
+    lda foto_saindo
+    bne @saindo
+    lda fade_nivel            ; ainda clareando?
+    bne @fim
     lda botoes_novos
     and #BTN_B
     beq @fim
+    lda #$01
+    sta foto_saindo
+    jmp escurece
+@saindo:
+    lda fade_nivel
+    cmp #FADE_PRETO
+    bne @fim
     inc foto_atual
     lda foto_atual
     cmp #FOTOS_N
-    bcs @menu
+    bcs @acabou
     jmp carrega_foto
-@menu:
-    jmp carrega_menu
+@acabou:
+    jmp carrega_fim
 @fim:
+    rts
+
+; ==========================================================================
+;  Tela: a cena final (ver tools/make_fim.py). O Victor, a Amanda e o Hulk
+;  chegam andando pela grama ate o meio da tela, "FELIZ 2 ANOS DE NAMORO"
+;  acende no ceu, e dali em diante o Hulk abana o rabo e uns coracaozinhos
+;  sobem dos dois -- pra sempre. Nenhum botao faz nada aqui: e o fim, e o
+;  jogo nao volta mais pro comeco.
+;
+;  Victor e Amanda sao as mesmas rotinas da pizzaria (monta_oam e
+;  monta_oam_victor_empe, que leem player_* e victor_*), entao e so por
+;  os numeros nas variaveis deles. O Hulk vem logo depois, nos sprites
+;  16-21, e o coracaozinho no 22.
+; ==========================================================================
+HULK_OAM    = 16*4
+CORACAO_OAM = 22*4
+FIM_PAUSA   = 40            ; quadros parados antes do texto acender
+FIM_DEGRAU  = 10            ; quadros por degrau do texto acendendo
+CORACAO_X   = (FIM_VICTOR_X + 16 + FIM_AMANDA_X) / 2 - 4   ; entre os dois
+CORACAO_Y0  = FIM_CHAO - 32 - 10                            ; logo acima das cabecas
+CORACAO_SOBE = 40           ; pixels que ele sobe antes de sumir
+
+carrega_fim:
+    lda #$01
+    sta carregando
+    jsr desliga_tela
+
+    lda #BANCO_FIM
+    jsr troca_banco
+
+    bit PPUSTATUS
+    PPU_ADDR $1000           ; ceu, texto, gramado -> pattern table 1
+    lda #<chr_fim
+    sta ptr
+    lda #>chr_fim
+    sta ptr+1
+    lda #PAGINAS_FIM
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $0000           ; os tres -> pattern table 0
+    lda #<chr_sprites_fim
+    sta ptr
+    lda #>chr_sprites_fim
+    sta ptr+1
+    lda #PAGINAS_SPRITES
+    sta paginas
+    jsr copia_ppu
+
+    PPU_ADDR $2000
+    lda #<nam_fim
+    sta ptr
+    lda #>nam_fim
+    sta ptr+1
+    lda #4
+    sta paginas
+    jsr copia_ppu
+
+    lda #<paletas_fim        ; chega preta (fade_nivel ainda no preto da
+    sta ptr                  ; ultima foto) e clareia ja com eles andando
+    lda #>paletas_fim
+    sta ptr+1
+    jsr carrega_paletas
+
+    lda #$00
+    sta fim_fase
+    sta fim_passos
+    sta fim_rampa
+    sta cor_y
+    sta player_dir
+    sta player_frame
+    sta victor_frame
+    sta hulk_quadro
+    sta amanda_sentada
+    sta victor_sentado
+    lda #FIM_CHAO - 32
+    sta player_y
+    sta victor_y
+    lda #FIM_AMANDA_X - FIM_CAMINHADA
+    sta player_x
+    lda #FIM_VICTOR_X - FIM_CAMINHADA
+    sta victor_x
+    lda #FIM_HULK_X - FIM_CAMINHADA
+    sta hulk_x
+    lda #60
+    sta cor_espera
+
+    jsr esconde_sprites
+    jsr monta_oam_fim
+
+    lda #TELA_FIM
+    sta tela
+    lda #$00
+    sta carregando
+    jsr liga_tela
+    jmp clareia
+
+atualiza_fim:
+    jsr passo_fade
+    lda fim_fase
+    beq @andando
+    cmp #$01
+    beq @acendendo
+    jsr sobe_coracao
+@abana:
+    lda frame_count          ; parado: o rabo vai e volta
+    and #$08
+    beq :+
+    lda #$02
+:   sta hulk_quadro
+    jmp monta_oam_fim
+
+@andando:
+    lda frame_count          ; meio pixel por quadro: um passeio
+    and #$01
+    bne @desenha
+    inc player_x
+    inc victor_x
+    inc hulk_x
+    inc fim_passos
+    lda fim_passos           ; troca o pe a cada 8px (o Hulk a cada 4:
+    lsr                      ; perna curta)
+    lsr
+    lsr
+    and #$01
+    sta player_frame
+    sta victor_frame
+    lda fim_passos
+    lsr
+    lsr
+    and #$01
+    sta hulk_quadro
+    lda fim_passos
+    cmp #FIM_CAMINHADA
+    bne @desenha
+    lda #$00                 ; chegaram: pes juntos
+    sta player_frame
+    sta victor_frame
+    lda #FIM_PAUSA
+    sta fim_cont
+    inc fim_fase
+@desenha:
+    jmp monta_oam_fim
+
+@acendendo:
+    dec fim_cont
+    bne @abana
+    lda #FIM_DEGRAU
+    sta fim_cont
+    inc fim_rampa
+    ldx fim_rampa
+    lda fim_rampa1, x        ; as duas cores do texto (paleta 1 do fundo)
+    sta pal_orig + 5
+    lda fim_rampa2, x
+    sta pal_orig + 6
+    jsr calcula_fade
+    lda #$01
+    sta pal_sujo
+    lda fim_rampa
+    cmp #FIM_RAMPA_N - 1
+    bne @abana
+    inc fim_fase             ; aceso: daqui pra frente, so coracaozinho
+    jmp @abana
+
+; ---- um coracaozinho por vez sobe do meio dos dois e some ----
+sobe_coracao:
+    lda cor_y
+    bne @subindo
+    dec cor_espera
+    bne @fim
+    lda #CORACAO_Y0
+    sta cor_y
+    rts
+@subindo:
+    lda frame_count
+    and #$01
+    bne @fim
+    dec cor_y
+    lda cor_y
+    cmp #CORACAO_Y0 - CORACAO_SOBE
+    bne @fim
+    lda #$00                 ; sumiu; o proximo daqui a pouco
+    sta cor_y
+    lda #50
+    sta cor_espera
+@fim:
+    rts
+
+monta_oam_fim:
+    jsr monta_oam            ; Amanda, sprites 0-7
+    jsr monta_oam_victor_empe ; Victor, 8-15
+
+    lda hulk_quadro          ; 6 celulas por quadro em hulk_tile_tab
+    asl
+    adc hulk_quadro
+    asl
+    sta jogo_tmp
+    ldx #$00
+    ldy #HULK_OAM
+@hulk:
+    lda #FIM_CHAO - 17       ; a pata dele no mesmo chao dos dois
+    clc
+    adc hulk_dy, x
+    sta oam, y
+    stx jogo_tmp2
+    txa
+    clc
+    adc jogo_tmp
+    tax
+    lda hulk_tile_tab, x
+    sta oam+1, y
+    ldx jogo_tmp2
+    lda #$02                 ; paleta 2: preto, bege e cinza
+    sta oam+2, y
+    lda hulk_x
+    clc
+    adc hulk_dx, x
+    sta oam+3, y
+    iny
+    iny
+    iny
+    iny
+    inx
+    cpx #$06
+    bne @hulk
+
+    lda cor_y                ; 0 = sem coracao (Y $FF esconde)
+    bne :+
+    lda #$FF
+:   sta oam + CORACAO_OAM
+    lda #TILE_CORACAOZINHO
+    sta oam + CORACAO_OAM + 1
+    lda #$00                 ; paleta 0: o rosa do laco dela
+    sta oam + CORACAO_OAM + 2
+    lda cor_y                ; balanca de um lado pro outro subindo
+    and #$08
+    lsr
+    lsr
+    lsr
+    clc
+    adc #CORACAO_X
+    sta oam + CORACAO_OAM + 3
     rts
 
 ; ==========================================================================
@@ -2142,14 +2452,9 @@ atualiza_jogo:
     jmp @so_desenha
 @nao_intro:
 
-    cmp #$02                 ; derrota: B tenta de novo, START desiste
+    cmp #$02                 ; derrota: B tenta de novo (nao ha desistir)
     bne @nao_derrota
     jsr toca_triste_tick      ; avanca a fraseszinha triste, se ainda tocando
-    lda botoes_novos
-    and #BTN_START
-    beq @checa_b_derrota
-    jmp carrega_menu
-@checa_b_derrota:
     lda botoes_novos
     and #BTN_B
     beq @so_desenha
@@ -2678,6 +2983,103 @@ toca_triste_tick:
     rts
 
 ; --------------------------------------------------------------------------
+;  Som de rua na cena do carro, no lugar da musica: o motor e um triangulo
+;  bem grave com uma oscilacao lenta no periodo (motor_vib), e o pneu na
+;  rua e o ruido baixinho, num periodo longo (AMB_RUIDO_*). De tempos em
+;  tempos um carro passa: o ruido sobe e desce de volume enquanto o
+;  periodo escorrega de agudo pra grave (vuush_vol/vuush_per). Tudo isso
+;  vem de tools/make_carro.py; aqui so se toca.
+;
+;  O tique das letras do balao tambem e no ruido. No quadro em que uma
+;  letra sai (dlg_wait acabou de voltar pra 2, ver passo_dialogo_carro) a
+;  rua cede o canal pro tique; no seguinte ela volta -- o tique aparece
+;  como um estalinho por cima da rua, sem cortar o som de fundo.
+;
+;  Conforme a tela escurece pra primeira foto (fade_nivel), o volume da
+;  rua cai junto, e o motor (que nao tem volume) desliga no meio.
+; --------------------------------------------------------------------------
+ambiente_liga:               ; so com a tela desligada (sem NMI)
+    lda #$FF                 ; triangulo tocando sem prazo
+    sta $4008
+    lda #<AMB_MOTOR
+    sta $400A
+    lda #>AMB_MOTOR
+    sta $400B
+    lda #$00
+    sta amb_vuush
+    lda #AMB_PRIMEIRO_VUUSH
+    sta amb_espera
+    rts
+
+ambiente_desliga:            ; idem
+    lda #$00
+    sta $4008
+    lda #$30                 ; ruido: volume 0
+    sta $400C
+    rts
+
+ambiente_carro:              ; no NMI, todo quadro do carro
+    lda fade_nivel
+    cmp #FADE_PRETO/2
+    bcc @motor
+    lda #$00                 ; meio escuro: o motor some
+    sta $4008
+    beq @rua
+@motor:
+    lda frame_count
+    lsr
+    lsr
+    lsr
+    and #$07
+    tax
+    lda motor_vib, x
+    sta $400A                ; so o byte baixo: a oscilacao nao vira o alto
+
+@rua:
+    lda dialogo              ; uma letra acabou de sair? o ruido e do tique
+    cmp #$02
+    bne @sem_tique
+    lda dlg_wait
+    cmp #$02
+    beq @fim
+@sem_tique:
+    ldx amb_vuush
+    beq @sem_vuush
+    lda vuush_per, x
+    tay
+    lda vuush_vol, x
+    inx
+    cpx #VUUSH_N
+    bne :+
+    ldx #$00                 ; acabou de passar
+:   stx amb_vuush
+    jmp @escreve
+@sem_vuush:
+    dec amb_espera
+    bne @base
+    lda #$01                 ; la vem um
+    sta amb_vuush
+    lda frame_count          ; o proximo em 3 a 4 segundos, nunca no
+    and #$3F                 ; mesmo ritmo
+    ora #$C0
+    sta amb_espera
+@base:
+    ldy #AMB_RUIDO_PER
+    lda #AMB_RUIDO_VOL
+@escreve:
+    sec                      ; a rua abaixa junto com a tela
+    sbc fade_nivel
+    bcs :+
+    lda #$00
+:   ora #$30                 ; volume constante, sem prazo
+    sta $400C
+    sty $400E
+    lda #$08                 ; recarrega o contador (o tique deixa ele correndo)
+    sta $400F
+@fim:
+    rts
+
+; --------------------------------------------------------------------------
 ;  Efeitos sonoros no canal de ruido. A musica so usa os dois pulsos e o
 ;  triangulo -- o ruido fica livre o jogo inteiro -- e o contador de
 ;  duracao do proprio APU desliga o som sozinho, sem precisar de um quadro
@@ -2977,15 +3379,117 @@ copia_ppu:
     rts
 
 ; ---- 32 bytes de paleta a partir de (ptr) ----
+; Guarda a original em pal_orig e manda pro PPU ja escurecida no nivel do
+; fade atual -- fora das transicoes ele e 0 e nada muda; numa troca de
+; foto a tela nova ja nasce preta e clareia depois (ver clareia).
 carrega_paletas:
-    bit PPUSTATUS
-    PPU_ADDR $3F00
     ldy #$00
 :   lda (ptr), y
-    sta PPUDATA
+    sta pal_orig, y
     iny
     cpy #32
     bne :-
+    jsr calcula_fade
+    bit PPUSTATUS
+    PPU_ADDR $3F00
+    ldx #$00
+:   lda pal_buf, x
+    sta PPUDATA
+    inx
+    cpx #32
+    bne :-
+    lda #$00                 ; tira o PPUADDR de dentro da paleta
+    sta PPUADDR
+    sta PPUADDR
+    rts
+
+; ==========================================================================
+;  Fade: escurecer e clarear a tela em degraus
+;
+;  No NES a cor e $LC: L (0-3) e o brilho, C o tom. Tirar $10 escurece um
+;  degrau sem mudar o tom; abaixo de zero vira preto ($0F). Em FADE_PRETO
+;  degraus toda cor ja virou preto. Tudo com registrador e tabela em RAM,
+;  sem 'ptr' -- passo_fade roda no laco principal, e 'ptr' e da musica.
+; ==========================================================================
+FADE_PRETO   = 4
+FADE_QUADROS = 6            ; quadros por degrau: ~0,4s pra apagar tudo
+
+; ---- comeca a escurecer (o laco chama passo_fade ate chegar no preto) ----
+escurece:
+    lda #FADE_PRETO
+    bne inicia_fade
+; ---- comeca a clarear ----
+clareia:
+    lda #$00
+inicia_fade:
+    sta fade_alvo
+    lda #FADE_QUADROS
+    sta fade_cont
+    rts
+
+; ---- um quadro do fade: a cada FADE_QUADROS anda um degrau ----
+passo_fade:
+    lda fade_nivel
+    cmp fade_alvo
+    beq @fim
+    dec fade_cont
+    bne @fim
+    lda #FADE_QUADROS
+    sta fade_cont
+    lda fade_nivel
+    cmp fade_alvo
+    bcc @escurece
+    dec fade_nivel
+    jmp @aplica
+@escurece:
+    inc fade_nivel
+@aplica:
+    jsr calcula_fade
+    lda #$01                 ; por ultimo: o NMI so copia depois da conta
+    sta pal_sujo             ; inteira
+@fim:
+    rts
+
+; ---- pal_buf = pal_orig escurecida fade_nivel degraus ----
+calcula_fade:
+    ldx #31
+@cor:
+    lda pal_orig, x
+    ldy fade_nivel
+    beq @guarda
+@degrau:
+    sec
+    sbc #$10
+    bcc @preto               ; passou de zero: preto
+    dey
+    bne @degrau
+    jmp @guarda
+@preto:
+    lda #$0F
+@guarda:
+    sta pal_buf, x
+    dex
+    bpl @cor
+    rts
+
+; ---- no NMI: copia pal_buf pro PPU se o laco pediu ----
+escreve_paleta:
+    lda pal_sujo
+    beq @fim
+    lda #$00
+    sta pal_sujo
+    bit PPUSTATUS
+    PPU_ADDR $3F00
+    ldx #$00
+:   lda pal_buf, x
+    sta PPUDATA
+    inx
+    cpx #32
+    bne :-
+    lda #$00                 ; tira o PPUADDR de dentro da paleta (quem
+    sta PPUADDR              ; vem depois acerta a rolagem)
+    sta PPUADDR
+@fim:
     rts
 
 ; ==========================================================================
@@ -3008,6 +3512,8 @@ nmi:
     lda #>oam
     sta OAMDMA
 
+    jsr escreve_paleta      ; um degrau do fade, se o laco principal pediu
+
     lda tela
     beq @menu
     cmp #TELA_CENA
@@ -3016,6 +3522,8 @@ nmi:
     beq @carro
     cmp #TELA_FOTO
     beq @scroll              ; foto parada: nada a desenhar no vblank
+    cmp #TELA_FIM
+    beq @scroll              ; a cena final so mexe em sprite e paleta
     jsr desenha_hud          ; so sobra TELA_JOGO aqui
     jmp @scroll
 @menu:
@@ -3032,7 +3540,8 @@ nmi:
     lda #$00                   ; outra nametable aqui
     sta PPUSCROLL
     sta PPUSCROLL
-    jsr musica_tick
+    jsr musica_tick            ; desligada no carro, mas nao custa
+    jsr ambiente_carro         ; o motor e a rua no lugar da musica
     inc nmi_flag
     jsr divide_tela_carro      ; por ultimo: fica esperando o PPU descer
     jmp @sai                   ; ate a estrela do sprite 0
@@ -3448,6 +3957,9 @@ vic_pal:     .byte 2, 2, 3, 2, 2, 3
 vic_empe_dx: .byte 0, 0, 0, 0,  8, 8, 8, 8
 vic_empe_dy: .byte 0, 8, 16, 24, 0, 8, 16, 24
 vic_empe_pal:.byte 2, 2, 3, 2,  2, 2, 3, 2
+; Hulk: 6 celulas de 8x8, na ordem de hulk_tile_tab (coluna por coluna)
+hulk_dx:     .byte 0, 0, 8, 8, 16, 16
+hulk_dy:     .byte 0, 8, 0, 8, 0, 8
 
 ; pecas da moldura, por tipo de linha: topo, meio, base
 borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5
@@ -3513,6 +4025,9 @@ paletas_jogo:
 
 paletas_carro:
     .incbin "carro.pal"
+
+paletas_fim:
+    .incbin "fim.pal"
 
 .include "musica.inc"
 .include "dialogo.inc"

@@ -218,6 +218,36 @@ def _desenhar_carro():
     _roda(6, 30, 14)                        # roda traseira
     _roda(44, 30, 14)                       # roda dianteira
 
+# ============================================================ o som da rua
+#
+# No carro nao toca musica (ela estreia na primeira foto): toca a rua.
+#   motor -- o triangulo num periodo bem grave (~65 Hz), oscilando um
+#            pouquinho em volta dele, devagar, pra nao soar como nota parada
+#   pneu  -- o ruido baixinho num periodo longo (o chiado grave do asfalto)
+#   carro passando -- de tempos em tempos o ruido sobe e desce de volume,
+#            e o periodo escorrega de agudo pra grave na metade (o "vuuush"
+#            de quem passa do lado)
+AMB_MOTOR = 860                 # periodo do triangulo: 1789773/(32*861) ~ 65 Hz
+MOTOR_VIB = [0, 3, 6, 8, 8, 6, 3, 0]
+AMB_RUIDO_VOL = 3
+AMB_RUIDO_PER = 0x0E            # indice da tabela de periodos do ruido (0 agudo, 15 grave)
+AMB_PRIMEIRO_VUUSH = 120        # quadros ate o primeiro carro passar
+VUUSH_QUADROS = 72
+
+def som_da_rua():
+    import math
+    vib = [(AMB_MOTOR + d) & 0xFF for d in MOTOR_VIB]
+    # o assembly so escreve o byte baixo quadro a quadro
+    assert all(((AMB_MOTOR + d) >> 8) == (AMB_MOTOR >> 8) for d in MOTOR_VIB)
+    # a posicao 0 das tabelas e "nenhum carro passando" -- nunca e lida
+    vol, per = [0], [0]
+    for k in range(VUUSH_QUADROS):
+        t = k / (VUUSH_QUADROS - 1)
+        vol.append(AMB_RUIDO_VOL + round(8 * math.sin(math.pi * t) ** 2))
+        per.append(round(9 + 5 / (1 + math.exp(-(t - 0.5) * 12))))
+    assert len(vol) < 256 and max(vol) <= 15 and max(per) <= 15
+    return vib, vol, per
+
 def main():
     desenhar()
     tiles, indice = [], {}
@@ -334,6 +364,8 @@ def main():
     def tab(nome, valores):
         return f"{nome}: .byte " + ", ".join(str(v) for v in valores)
 
+    vib, vuush_vol, vuush_per = som_da_rua()
+
     linhas = ["; gerado por tools/make_carro.py -- nao edite a mao", "",
               f"PAGINAS_CARRO = {paginas}",
               f"PAGINAS_SPRITES_CARRO = {pag_sprites}",
@@ -348,6 +380,16 @@ def main():
               tab("carro_ofs_y_tab", carro_ofs_y),
               tab("carro_tile_tab", carro_tile),
               tab("carro_pal_tab", carro_pal),
+              "",
+              "; som de rua (ver ambiente_carro em src/jogo.s)",
+              f"AMB_MOTOR = {AMB_MOTOR}",
+              f"AMB_RUIDO_VOL = {AMB_RUIDO_VOL}",
+              f"AMB_RUIDO_PER = {AMB_RUIDO_PER}",
+              f"AMB_PRIMEIRO_VUUSH = {AMB_PRIMEIRO_VUUSH}",
+              f"VUUSH_N = {len(vuush_vol)}",
+              tab("motor_vib", vib),
+              tab("vuush_vol", vuush_vol),
+              tab("vuush_per", vuush_per),
               ""]
     open("build/carro.inc", "w").write("\n".join(linhas))
     print("build/carro.inc")

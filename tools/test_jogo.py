@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Testa o jogo inteiro: menu -> pizzaria -> menu, com o personagem andando.
+Testa o jogo inteiro, do menu ate a cena final -- e que dela nao se volta.
 """
 import re
 import sys
@@ -9,7 +9,10 @@ from nesemu import NES, load_labels, check, FAILS
 import robo
 
 ROM = "jogo.nes"
-BTN_B, BTN_START, BTN_LEFT, BTN_RIGHT = 0x02, 0x08, 0x40, 0x80
+BTN_A, BTN_B, BTN_SEL, BTN_START = 0x01, 0x02, 0x04, 0x08
+BTN_UP, BTN_DOWN, BTN_LEFT, BTN_RIGHT = 0x10, 0x20, 0x40, 0x80
+TODOS = 0xFF
+TELA_CARRO, TELA_FOTO, TELA_FIM = 3, 4, 5
 POS_VICTOR = 0x2000 + 12 * 32 + 13
 POS_AMANDA = 0x2000 + 17 * 32 + 13
 TILE_AMA_BOCA_E = 28   # ver TILE_AMA_BOCA_E em src/jogo.s -- nao e um label
@@ -164,18 +167,13 @@ def main():
     check("trava na borda esquerda", nes.bus.ram[sym["player_x"]] >= 7,
           f"x = {nes.bus.ram[sym['player_x']]}")
 
-    print("\n== 6. START volta pro titulo (B agora e interagir) ==")
+    print("\n== 6. Depois do titulo, START nao volta mais pro menu ==")
     nes.frame(BTN_START)
     for _ in range(6):
         nes.frame()
-    check("tela = menu", nes.bus.ram[sym["tela"]] == 0)
-    check("banco 0 de volta", nes.bus.banco == 0, f"banco {nes.bus.banco}")
-    check("VICTOR redesenhado", nes.nt_text(POS_VICTOR, 6) == "VICTOR")
-    check("AMANDA redesenhado", nes.nt_text(POS_AMANDA, 6) == "AMANDA")
-    check("sprites escondidos de novo", len(nes.sprites()) == 0)
-    check("fonte recarregada na CHR-RAM",
-          any(nes.bus.vram[0x1000 + 0x21 * 16 + k] for k in range(16)),
-          "tile da letra A ($21)")
+    check("continua na pizzaria", nes.bus.ram[sym["tela"]] == 1 and nes.bus.banco == 1,
+          f"tela={nes.bus.ram[sym['tela']]} banco={nes.bus.banco}")
+    check("os dois continuam na tela", len(nes.sprites()) == 16)
 
     print("\n== 6b. O balao de fala ==")
     d = NES(ROM)
@@ -584,13 +582,26 @@ def main():
           scroll1 != scroll0, f"{scroll0} -> {scroll1}")
     check("mas o sprite do carro fica parado na tela (so o fundo rola)",
           v.bus.oam[7] == x0, f"{x0} -> {v.bus.oam[7]}")
-    check("o carro toca o refrao de \"Amanda\" (a musica da parte final)",
-          v.bus.ram[sym["musica_liga"]] == 1)
-    base = v.bus.ram[sym["ch_base_lo"]] | (v.bus.ram[sym["ch_base_hi"]] << 8)
-    check("e e o refrao mesmo, nao o Grieg do minigame",
-          base == sym["musica1_canal0"], f"${base:04X}")
-    check("no andamento escrito (o minigame acelerado nao vaza pro carro)",
-          v.bus.ram[sym["musica_vel"]] == 16, v.bus.ram[sym["musica_vel"]])
+    check("no carro nao tem musica (ela estreia na primeira foto)",
+          v.bus.ram[sym["musica_liga"]] == 0)
+    check("os pulsos ficam calados (a fraseszinha da vitoria nao vaza)",
+          v.bus.apu[0x00] & 0x0F == 0 and v.bus.apu[0x04] & 0x0F == 0)
+    amb_motor = int(re.search(r"AMB_MOTOR\s*=\s*(\d+)", car_inc_txt := open("build/carro.inc").read()).group(1))
+    amb_vol = int(re.search(r"AMB_RUIDO_VOL\s*=\s*(\d+)", car_inc_txt).group(1))
+    tri = v.bus.apu[0x0A] | ((v.bus.apu[0x0B] & 7) << 8)
+    check("o motor: triangulo ligado, bem grave",
+          v.bus.apu[0x08] & 0x7F and amb_motor <= tri <= amb_motor + 10, f"periodo {tri}")
+    periodos, volumes = set(), []
+    rua = v.copia()                          # 'v' segue sem a conversa ter comecado
+    for _ in range(400):
+        rua.frame()
+        periodos.add(rua.bus.apu[0x0A])
+        volumes.append(rua.bus.apu[0x0C] & 0x0F)
+    check("o motor oscila um pouco (nao e uma nota parada)", len(periodos) > 2, sorted(periodos))
+    check("a rua: ruido baixinho o tempo todo", min(volumes) >= 1 and volumes.count(amb_vol) > 100,
+          f"min={min(volumes)}")
+    check("de vez em quando um carro passa (o ruido sobe e desce)",
+          max(volumes) > amb_vol + 3, f"max={max(volumes)}")
 
     print("\n== 9c. O carro: ceu parado em cima, rua rolando embaixo ==")
     car_inc = open("build/carro.inc").read()
@@ -642,15 +653,50 @@ def main():
           fo.bus.ram[sym["carro_fase"]] == 2 and fo.bus.ram[sym["dialogo"]] == 0 and
           bytes(fo.bus.vram[0x2040:0x2100]) == nt0[0x40:0x100])
 
-    print("\n== 9e. As fotos: B no carro abre a primeira polaroide ==")
+    print("\n== 9e. As fotos: B no carro escurece e abre a primeira polaroide ==")
     inc = open("build/fotos.inc").read()
     n_fotos = int(re.search(r"FOTOS_N\s*=\s*(\d+)", inc).group(1))
     banco1 = int(re.search(r"foto_banco_tab:\s*\.byte\s*(\d+)", inc).group(1))
-    fo.frame(BTN_B)
+    pal_carro = bytes(fo.bus.vram[0x3F00:0x3F20])
+    fo.frame(BTN_START)
     for _ in range(6): fo.frame()
+    check("START no carro nao faz nada", fo.bus.ram[sym["tela"]] == TELA_CARRO)
+    fo.frame(BTN_B)
+    for _ in range(14): fo.frame()
+    meio = bytes(fo.bus.vram[0x3F00:0x3F20])
+    check("a tela do carro escurece antes de trocar",
+          fo.bus.ram[sym["tela"]] == TELA_CARRO and meio != pal_carro and
+          all(m == 0x0F or (m >> 4) < (c >> 4) for m, c in zip(meio, pal_carro) if c != 0x0F),
+          f"{pal_carro.hex()} -> {meio.hex()}")
+    check("o som da rua abaixa junto", fo.bus.apu[0x0C] & 0x0F < amb_vol,
+          fo.bus.apu[0x0C] & 0x0F)
+
+    def ate_trocar(n, tela):
+        """Espera a tela nova aparecer E clarear inteira (+1 quadro pro NMI)."""
+        for _ in range(200):
+            n.frame()
+            if n.bus.ram[sym["tela"]] == tela and n.bus.ram[sym["fade_nivel"]] == 0:
+                break
+        n.frame()
+
+    for _ in range(200):
+        fo.frame()
+        if fo.bus.ram[sym["tela"]] == TELA_FOTO:
+            break
     check("B no carro leva pra primeira foto",
-          fo.bus.ram[sym["tela"]] == 4 and fo.bus.banco == banco1,
+          fo.bus.ram[sym["tela"]] == TELA_FOTO and fo.bus.banco == banco1,
           f"tela={fo.bus.ram[sym['tela']]} banco={fo.bus.banco}")
+    check("ela chega escura e vai clareando", fo.bus.ram[sym["fade_nivel"]] > 0)
+    check("a musica estreia aqui: o refrao de \"Amanda\"",
+          fo.bus.ram[sym["musica_liga"]] == 1 and
+          (fo.bus.ram[sym["ch_base_lo"]] | (fo.bus.ram[sym["ch_base_hi"]] << 8)) == sym["musica1_canal0"])
+    check("no andamento escrito (o minigame acelerado nao vaza)",
+          fo.bus.ram[sym["musica_vel"]] == 16, fo.bus.ram[sym["musica_vel"]])
+    check("a rua calou", fo.bus.apu[0x0C] & 0x0F == 0)
+    fo.frame(BTN_B)                          # B no meio do fade nao pula a foto
+    ate_trocar(fo, TELA_FOTO)
+    check("B enquanto clareia nao pula a foto",
+          fo.bus.ram[sym["foto_atual"]] == 0 and fo.bus.ram[sym["foto_saindo"]] == 0)
     nam = open("build/foto1.nam", "rb").read()
     check("a nametable e a da foto 1, tile por tile (atributos inclusos)",
           bytes(fo.bus.vram[0x2000:0x2400]) == nam)
@@ -658,28 +704,86 @@ def main():
     check("os tiles da foto foram todos pra pattern table 1",
           bytes(fo.bus.vram[0x1000:0x1000 + len(chr1)]) == chr1)
     pal = open("build/foto.pal", "rb").read()
-    check("paleta sepia carregada",
-          bytes(fo.bus.vram[0x3F00:0x3F04]) == pal[:4],
+    check("depois de clarear, a paleta sepia e a de verdade",
+          bytes(fo.bus.vram[0x3F00:0x3F20]) == pal[:32],
           bytes(fo.bus.vram[0x3F00:0x3F04]).hex())
+    check("PPUADDR nao fica parado dentro da paleta",
+          not (0x3F00 <= fo.bus.vaddr <= 0x3F1F), f"${fo.bus.vaddr:04X}")
     check("nenhum sprite do carro sobrou por cima da foto",
           all(fo.bus.oam[i] >= 0xEF for i in range(0, 256, 4)))
-    check("a musica continua ligada na troca pra foto",
-          fo.bus.ram[sym["musica_liga"]] == 1)
+    fo.frame(BTN_START)
+    for _ in range(6): fo.frame()
+    check("START na foto nao faz nada", fo.bus.ram[sym["tela"]] == TELA_FOTO and
+          fo.bus.ram[sym["foto_atual"]] == 0)
     for n in range(2, n_fotos + 1):
         fo.frame(BTN_B)
-        for _ in range(6): fo.frame()
+        for _ in range(10): fo.frame()
+        ate_trocar(fo, TELA_FOTO)
         check(f"B leva pra foto {n}, com a nametable dela",
-              fo.bus.ram[sym["tela"]] == 4 and
+              fo.bus.ram[sym["tela"]] == TELA_FOTO and
               bytes(fo.bus.vram[0x2000:0x2400]) == open(f"build/foto{n}.nam", "rb").read())
+    check("a musica nao reinicia entre as fotos (segue o refrao)",
+          fo.bus.ram[sym["musica_liga"]] == 1)
+
+    print("\n== 9f. A cena final ==")
+    fim_inc = open("build/fim.inc").read()
+    def const(nome):
+        return int(re.search(rf"^{nome}\s*=\s*(\d+)", fim_inc, re.M).group(1))
     fo.frame(BTN_B)
-    for _ in range(6): fo.frame()
-    check(f"B depois da ultima foto ({n_fotos}) volta pro menu (por enquanto)",
-          fo.bus.ram[sym["tela"]] == 0, f"tela={fo.bus.ram[sym['tela']]}")
-    v.frame(BTN_START)
-    for _ in range(6): v.frame()
-    check("START na cena do carro volta pro menu (escape hatch de sempre)",
-          v.bus.ram[sym["tela"]] == 0 and v.bus.banco == 0,
-          f"tela={v.bus.ram[sym['tela']]} banco={v.bus.banco}")
+    for _ in range(40):
+        fo.frame()
+        if fo.bus.ram[sym["tela"]] == TELA_FIM:
+            break
+    check(f"B depois da ultima foto ({n_fotos}) leva pra cena final",
+          fo.bus.ram[sym["tela"]] == TELA_FIM and fo.bus.banco == 0,
+          f"tela={fo.bus.ram[sym['tela']]} banco={fo.bus.banco}")
+    fo.frame()
+    check("o fundo e o da cena final, tile por tile",
+          bytes(fo.bus.vram[0x2000:0x2400]) == open("build/fim.nam", "rb").read())
+    check("Victor (8) + Amanda (8) + Hulk (6) na tela", len(fo.sprites()) == 22,
+          f"{len(fo.sprites())} sprites")
+    hulk = [fo.bus.oam[i:i + 4] for i in range(64, 88, 4)]
+    check("o Hulk usa a paleta 2 (preto, bege, cinza)", all(s[2] & 3 == 2 for s in hulk))
+    check("o texto comeca apagado", fo.bus.vram[0x3F05] == 0x0F and fo.bus.vram[0x3F06] == 0x0F)
+    x0 = fo.bus.ram[sym["hulk_x"]]
+    quadros = set()
+    for _ in range(60):
+        fo.frame()
+        quadros.add(fo.bus.ram[sym["hulk_quadro"]])
+    check("os tres andam juntos pra direita",
+          fo.bus.ram[sym["hulk_x"]] > x0 and
+          fo.bus.ram[sym["player_x"]] - fo.bus.ram[sym["victor_x"]] == const("FIM_AMANDA_X") - const("FIM_VICTOR_X"),
+          f"{x0} -> {fo.bus.ram[sym['hulk_x']]}")
+    check("o Hulk troca as patinhas andando", quadros == {0, 1}, sorted(quadros))
+    for _ in range(600):
+        fo.frame()
+        if fo.bus.ram[sym["fim_fase"]] == 2:
+            break
+    fo.frame()
+    check("param no meio, cada um no seu lugar",
+          (fo.bus.ram[sym["victor_x"]], fo.bus.ram[sym["player_x"]], fo.bus.ram[sym["hulk_x"]]) ==
+          (const("FIM_VICTOR_X"), const("FIM_AMANDA_X"), const("FIM_HULK_X")))
+    rampa = [re.search(rf"^fim_rampa{k}: .byte (.*)$", fim_inc, re.M).group(1).split(", ")[-1]
+             for k in (1, 2)]
+    check("\"FELIZ 2 ANOS DE NAMORO\" acende (as cores finais do texto)",
+          bytes(fo.bus.vram[0x3F05:0x3F07]) == bytes(int(c[1:], 16) for c in rampa),
+          bytes(fo.bus.vram[0x3F05:0x3F07]).hex())
+    rabo, coracao = set(), False
+    for _ in range(300):
+        fo.frame()
+        rabo.add(fo.bus.ram[sym["hulk_quadro"]])
+        coracao |= fo.bus.oam[88] < 0xEF
+    check("parado, o Hulk abana o rabo", rabo == {0, 2}, sorted(rabo))
+    check("um coracaozinho sobe dos dois", coracao)
+    check("a musica continua: o refrao", fo.bus.ram[sym["musica_liga"]] == 1 and
+          (fo.bus.ram[sym["ch_base_lo"]] | (fo.bus.ram[sym["ch_base_hi"]] << 8)) == sym["musica1_canal0"])
+    fim_oam = bytes(fo.bus.oam[0:88])
+    for k in range(600):
+        fo.frame([BTN_START, BTN_B, BTN_A, BTN_SEL, TODOS, 0][k % 6])
+    check("o fim e pra sempre: nenhum botao sai da cena final",
+          fo.bus.ram[sym["tela"]] == TELA_FIM and fo.bus.banco == 0)
+    check("e ninguem sai do lugar", bytes(fo.bus.oam[0:64]) == fim_oam[0:64])
+    check("pilha inteira depois de tudo", 0xF0 <= fo.cpu.sp <= 0xFF, f"SP=${fo.cpu.sp:02X}")
 
     print("\n== 10. O minigame: derrota ao acumular ERROS_MAX ==")
     f = NES(ROM)
@@ -705,7 +809,7 @@ def main():
     check("continua no banco do jogo, nao voltou pro menu",
           f.bus.banco == 2, f"banco {f.bus.banco}")
 
-    print("\n== 10c. Derrota: START ainda desiste pro menu ==")
+    print("\n== 10c. Derrota: START nao desiste (nao ha volta pro menu) ==")
     g = NES(ROM)
     entra_no_minigame(g, sym)
     g.bus.ram[sym["player_x"]] = 8
@@ -716,43 +820,32 @@ def main():
     check("5 erros de novo, numa instancia separada", g.bus.ram[sym["jogo_fase"]] == 2)
     g.frame(BTN_START)
     for _ in range(6): g.frame()
-    check("START no fim de jogo volta pro menu", g.bus.ram[sym["tela"]] == 0)
-    check("banco 0 de volta (fim de jogo)", g.bus.banco == 0, f"banco {g.bus.banco}")
+    check("START na derrota nao faz nada",
+          g.bus.ram[sym["tela"]] == 2 and g.bus.ram[sym["jogo_fase"]] == 2 and g.bus.banco == 2)
 
     print("\n== 11. A musica troca de estado junto com a tela ==")
-    # a essa altura 'nes' esta de volta ao menu (secao 6) -- e o menu agora
-    # fica em silencio (so a pizzaria e o minigame tocam musica)
-    check("menu em silencio", nes.bus.apu[0x00] & 0x0F == 0 and
-          nes.bus.apu[0x04] & 0x0F == 0)
-    nes.frame(BTN_START)                    # entra na pizzaria: a musica comeca
+    m = NES(ROM)
+    for _ in range(12): m.frame()
+    check("menu em silencio", m.bus.apu[0x00] & 0x0F == 0 and
+          m.bus.apu[0x04] & 0x0F == 0)
+    m.frame(BTN_START)                      # entra na pizzaria: a musica comeca
     for _ in range(70):                     # o respiro pro plin, antes da cena carregar
-        nes.frame()
-    p1 = nes.bus.apu[0x02] | ((nes.bus.apu[0x03] & 7) << 8)
+        m.frame()
+    p1 = m.bus.apu[0x02] | ((m.bus.apu[0x03] & 7) << 8)
     mudou = False
     for _ in range(40):
-        nes.frame()
-        p = nes.bus.apu[0x02] | ((nes.bus.apu[0x03] & 7) << 8)
+        m.frame()
+        p = m.bus.apu[0x02] | ((m.bus.apu[0x03] & 7) << 8)
         if p != p1:
             mudou = True
-    check("canais ainda ligados", nes.bus.apu[0x15] & 0x0F == 0x0F)
+    check("canais ainda ligados", m.bus.apu[0x15] & 0x0F == 0x0F)
     check("as notas continuam mudando na pizzaria", mudou)
-    nes.frame(BTN_START)                    # volta pro menu, deixa o estado como antes
-    for _ in range(6):
-        nes.frame()
-    check("silencia de novo ao voltar pro menu",
-          nes.bus.ram[sym["tela"]] == 0 and nes.bus.apu[0x00] & 0x0F == 0)
 
     print("\n== 12. Estabilidade ==")
-    for _ in range(3):
-        nes.frame(BTN_START)
-        for _ in range(70):            # o respiro pro plin, antes da cena carregar
-            nes.frame()
-        for _ in range(20):
-            nes.frame(BTN_RIGHT)
-        nes.frame(BTN_START)          # START entra e sai
-        for _ in range(20):
-            nes.frame()
-    check("aguenta trocar de tela varias vezes", nes.bus.ram[sym["tela"]] == 0)
+    # 'nes' esta na pizzaria desde a secao 3: aperta de tudo por um tempo
+    for k in range(600):
+        nes.frame([BTN_START, BTN_RIGHT, BTN_SEL, BTN_LEFT, BTN_A, 0][k % 6])
+    check("nenhum botao tira da pizzaria", nes.bus.ram[sym["tela"]] == 1)
     check("pilha nao vazou", 0xF0 <= nes.cpu.sp <= 0xFF, f"SP=${nes.cpu.sp:02X}")
     check("total simulado", nes.frames > 800, f"{nes.frames} quadros")
 

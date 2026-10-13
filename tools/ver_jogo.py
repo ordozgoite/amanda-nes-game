@@ -29,17 +29,14 @@ for _ in range(110):            # anda pra direita
 render(nes).save("build/jogo-3-andando.png")
 print("build/jogo-3-andando.png")
 
-nes.frame(BTN_START)             # START de volta pro titulo, sem passar pelo dialogo
+nes.frame(BTN_START)             # START nao faz mais nada depois do titulo
 for _ in range(6):
     nes.frame()
-render(nes).save("build/jogo-4-voltou.png")
-print("build/jogo-4-voltou.png (banco", nes.bus.banco, ")")
+render(nes).save("build/jogo-4-start-nada.png")
+print("build/jogo-4-start-nada.png (tela", nes.bus.ram[sym["tela"]], ")")
 
-# --- de novo, mas ate o fim: fala com o Victor (as duas partes), depois a
-# Amanda, e cai no minigame ---
-nes.frame(BTN_START)
-for _ in range(ESPERA_MENU):
-    nes.frame()
+# --- ate o fim: fala com o Victor (as duas partes), depois a Amanda, e
+# cai no minigame ---
 for _ in range(200):
     nes.frame(BTN_RIGHT)
     if nes.bus.ram[sym["perto"]]:
@@ -130,20 +127,46 @@ nes.frame(BTN_B)
 for _ in range(12):
     nes.frame()
 
-nes.frame(BTN_B)                  # conversa acabou: B -> primeira foto
-for _ in range(6):
-    nes.frame()
-render(nes).save("build/jogo-12-foto.png")
-print("build/jogo-12-foto.png (banco", nes.bus.banco, ")")
+def ate_tela(nes, tela, limite=200):
+    """B ja apertado: espera o fade escurecer, a tela trocar e clarear."""
+    for _ in range(limite):
+        nes.frame()
+        if nes.bus.ram[sym["tela"]] == tela and nes.bus.ram[sym["fade_nivel"]] == 0:
+            break
+    nes.frame()                   # a paleta clara so chega no PPU no NMI seguinte
 
-nes.frame(BTN_B)                  # a segunda foto
-for _ in range(6):
+nes.frame(BTN_B)                  # conversa acabou: B escurece -> primeira foto
+for _ in range(12):
     nes.frame()
-render(nes).save("build/jogo-13-foto2.png")
-print("build/jogo-13-foto2.png (banco", nes.bus.banco, ")")
+render(nes).save("build/jogo-11d-carro-escurecendo.png")
+print("build/jogo-11d-carro-escurecendo.png  fade =", nes.bus.ram[sym["fade_nivel"]])
+ate_tela(nes, 4)
+from make_foto import FOTOS
+for n in range(1, len(FOTOS) + 1):
+    if n > 1:
+        nes.frame(BTN_B)
+        for _ in range(10):
+            nes.frame()
+        ate_tela(nes, 4)
+    nome = f"build/jogo-12-foto{n}.png"
+    render(nes).save(nome)
+    print(nome, "(banco", nes.bus.banco, ")")
 
-nes.frame(BTN_B)                  # a terceira foto
-for _ in range(6):
+nes.frame(BTN_B)                  # depois da ultima: a cena final
+for _ in range(30):
     nes.frame()
-render(nes).save("build/jogo-14-foto3.png")
-print("build/jogo-14-foto3.png (banco", nes.bus.banco, ")")
+ate_tela(nes, 5)
+render(nes).save("build/jogo-15-fim-chegando.png")
+print("build/jogo-15-fim-chegando.png (banco", nes.bus.banco, ")")
+for _ in range(400):
+    nes.frame()
+    if nes.bus.ram[sym["fim_fase"]] == 2:
+        break
+render(nes).save("build/jogo-16-fim.png")
+print("build/jogo-16-fim.png")
+for _ in range(400):
+    nes.frame()
+    if nes.bus.ram[sym["cor_y"]] and nes.bus.ram[sym["cor_y"]] < 150:
+        break
+render(nes).save("build/jogo-17-fim-coracao.png")
+print("build/jogo-17-fim-coracao.png")

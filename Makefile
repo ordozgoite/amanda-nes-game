@@ -3,7 +3,8 @@ DADOS = build/chr_menu.bin build/chr_cena.bin build/chr_sprites.bin build/sprite
         build/cena.nam build/cena.pal build/dialogo.inc build/musica.inc \
         build/chr_jogo.bin build/jogo.nam build/jogo.pal build/jogo.inc \
         build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam \
-        build/carro_nt1.nam build/carro.pal build/carro.inc build/fotos.inc
+        build/carro_nt1.nam build/carro.pal build/carro.inc build/fotos.inc \
+        build/chr_fim.bin build/fim.nam build/fim.pal build/fim.inc
 
 all: $(JOGO)
 
@@ -32,6 +33,10 @@ build/chr_carro.bin build/chr_sprites_carro.bin build/carro_nt0.nam build/carro_
 	@mkdir -p build
 	python3 tools/make_carro.py
 
+build/chr_fim.bin build/fim.nam build/fim.pal build/fim.inc: tools/make_fim.py tools/make_chr.py build/cena.pal
+	@mkdir -p build
+	python3 tools/make_fim.py
+
 build/fotos.inc: tools/make_foto.py tools/make_chr.py $(wildcard fotos/*)
 	@mkdir -p build
 	python3 tools/make_foto.py
@@ -57,6 +62,7 @@ audio: $(JOGO)
 	python3 tools/audio_minigame.py
 	python3 tools/audio_derrota.py
 	python3 tools/audio_vitoria.py
+	python3 tools/audio_carro.py
 
 rodar: $(JOGO)
 	fceux --sound 1 --volume 150 --xscale 3 --yscale 3 $(JOGO)
