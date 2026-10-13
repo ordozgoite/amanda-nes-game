@@ -158,6 +158,13 @@ for _ in range(30):
 ate_tela(nes, 5)
 render(nes).save("build/jogo-15-fim-chegando.png")
 print("build/jogo-15-fim-chegando.png (banco", nes.bus.banco, ")")
+for _ in range(200):
+    nes.frame()
+    if nes.bus.ram[sym["hulk_pulo"]] >= 5:   # no alto do pulinho, latindo
+        break
+nes.frame()
+render(nes).save("build/jogo-15b-fim-hulk-latindo.png")
+print("build/jogo-15b-fim-hulk-latindo.png")
 for _ in range(400):
     nes.frame()
     if nes.bus.ram[sym["fim_fase"]] == 2:

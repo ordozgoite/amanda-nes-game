@@ -746,15 +746,41 @@ def main():
     check("o Hulk usa a paleta 2 (preto, bege, cinza)", all(s[2] & 3 == 2 for s in hulk))
     check("o texto comeca apagado", fo.bus.vram[0x3F05] == 0x0F and fo.bus.vram[0x3F06] == 0x0F)
     x0 = fo.bus.ram[sym["hulk_x"]]
-    quadros = set()
-    for _ in range(60):
+    quadros, pulos, aus, tons, ys_casal = set(), set(), 0, set(), set()
+    devolvido = []
+    au_antes = 0
+    while fo.bus.ram[sym["fim_fase"]] == 0:
         fo.frame()
         quadros.add(fo.bus.ram[sym["hulk_quadro"]])
+        pulos.add(fo.bus.ram[sym["hulk_pulo"]])
+        ys_casal.add((fo.bus.ram[sym["player_y"]], fo.bus.ram[sym["victor_y"]]))
+        au = fo.bus.ram[sym["au_pulso"]]
+        if au:
+            tons.add(fo.bus.apu[0x06] | ((fo.bus.apu[0x07] & 7) << 8))
+        elif au_antes:
+            # o "au" acabou neste quadro: o pulso 2 tem que estar de volta
+            # no periodo da nota que a musica esta tocando agora
+            nota = fo.bus.ram[sym["ch_note"] + 1]
+            esperado = fo.bus.read(sym["per_lo"] + nota) | ((fo.bus.read(sym["per_hi"] + nota) & 7) << 8)
+            devolvido.append(nota == 0 or
+                             (fo.bus.apu[0x06] | ((fo.bus.apu[0x07] & 7) << 8)) == esperado)
+        aus += au and not au_antes
+        au_antes = au
     check("os tres andam juntos pra direita",
           fo.bus.ram[sym["hulk_x"]] > x0 and
           fo.bus.ram[sym["player_x"]] - fo.bus.ram[sym["victor_x"]] == const("FIM_AMANDA_X") - const("FIM_VICTOR_X"),
           f"{x0} -> {fo.bus.ram[sym['hulk_x']]}")
-    check("o Hulk troca as patinhas andando", quadros == {0, 1}, sorted(quadros))
+    check("o Hulk troca as patinhas andando", {0, 1} <= quadros, sorted(quadros))
+    check("e chega latindo, de boca aberta andando (quadros 3 e 5)",
+          {3, 5} <= quadros, sorted(quadros))
+    check("dois \"au au\" na entrada (4 latidos)", aus == 4, aus)
+    check("o Hulk pula a cada latido", max(pulos) >= 4, sorted(pulos))
+    check("andando, os dois nao pulam (so ele)",
+          ys_casal == {(const("FIM_CHAO") - 32, const("FIM_CHAO") - 32)}, ys_casal)
+    check("o \"au\" tem tom: o pulso 2 cai de agudo pra grave",
+          tons and min(tons) < 130 and max(tons) > 200, sorted(tons))
+    check("depois de cada \"au\", o pulso 2 volta pra nota da musica",
+          devolvido and all(devolvido), devolvido)
     for _ in range(600):
         fo.frame()
         if fo.bus.ram[sym["fim_fase"]] == 2:

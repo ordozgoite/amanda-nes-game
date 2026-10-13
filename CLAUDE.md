@@ -406,16 +406,19 @@ nova ja nasce escura porque `carrega_paletas` aplica o `fade_nivel` atual.
 
 **Cena final** (`tela = TELA_FIM`, `BANCO_FIM` = 0, junto do menu; ver
 `tools/make_fim.py`/`carrega_fim`): gramado de noite, lua, estrelas. Victor,
-Amanda e o Hulk (cachorro dela) chegam andando juntos ate o meio, o
+Amanda e o Hulk (cachorro dela) chegam andando juntos ate o meio -- o
+Hulk na frente, latindo dois "au au" e dando um pulinho a cada latido --, o
 "FELIZ 2 ANOS DE NAMORO" acende (so a paleta 1 do fundo muda, pela
 `RAMPA_TEXTO` -- o texto ja esta na nametable desde o comeco), e dali o
-Hulk abana o rabo, late "au au" de boca aberta a cada 3-4 s (`late`,
-`som_au`: ruido no modo curto escorregando pro grave -- o ruido esta livre
-ali) com os dois dando um pulinho, e uns coracaozinhos sobem dos dois, pra
-sempre. `make audio` grava `build/fim.wav`. Victor e
+Hulk abana o rabo, late "au au" de boca aberta a cada 3-4 s com os dois
+dando um pulinho, e uns coracaozinhos sobem dos dois, pra sempre. O
+latido (`late`, `som_au`) e o ruido no modo curto (o "pff") MAIS o pulso 2
+emprestado da musica por 7 quadros (`latido_pulso`), que da o tom do "au":
+enquanto `au_pulso` conta, `escreve_periodo`/`aplica_volume` pulam o canal
+1, e no fim a nota atual da musica e devolvida. `make audio` grava `build/fim.wav`. Victor e
 Amanda sao as rotinas da pizzaria (`monta_oam`, `monta_oam_victor_empe`);
 o Hulk (`HULK_*` em `make_sprites.py`, 24x16, paleta 2: preto/bege/cinza,
-cinco quadros: dois de passo, um abanando e dois latindo) vive na mesma
+seis quadros: dois de passo, um abanando e tres latindo) vive na mesma
 folha de sprites.
 Nenhum botao faz nada ali.
 

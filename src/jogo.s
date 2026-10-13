@@ -307,6 +307,8 @@ hulk_quadro:  .res 1        ; 0/1 passo, 2 parado abanando o rabo
 cor_y:        .res 1        ; o coracaozinho subindo (0 = escondido)
 cor_espera:   .res 1
 hulk_boca:    .res 1        ; 1 = boca aberta (latindo)
+hulk_pulo:    .res 1        ; altura do pulinho dele (pixels)
+au_pulso:     .res 1        ; quadros que o "au" ainda segura o pulso 2 (ver latido_pulso)
 lati_t:       .res 1        ; quadro dentro do "au au" (0 = quieto)
 lati_cont:    .res 1        ; quadros ate o proximo "au au"
 
@@ -1671,7 +1673,7 @@ atualiza_foto:
 ;  chegam andando pela grama ate o meio da tela, "FELIZ 2 ANOS DE NAMORO"
 ;  acende no ceu, e dali em diante o Hulk abana o rabo, late de vez em
 ;  quando (e os dois dao um pulinho) e uns coracaozinhos sobem dos dois --
-;  pra sempre. Nenhum botao faz nada aqui: e o fim, e o
+;  pra sempre. Chegando, o Hulk ja vem latindo e pulando na frente. Nenhum botao faz nada aqui: e o fim, e o
 ;  jogo nao volta mais pro comeco.
 ;
 ;  Victor e Amanda sao as mesmas rotinas da pizzaria (monta_oam e
@@ -1693,7 +1695,8 @@ LATIDO2      = 14
 BOCA_QUADROS = 8
 LATE_FIM     = 30
 VICTOR_PULA  = 5
-PRIMEIRO_AU  = 90           ; logo depois do texto acender
+ENTRADA_AU   = 30           ; o primeiro "au au" sai logo que eles entram
+ENTRADA_INTERVALO = 60      ; e outro antes de chegarem no meio
 
 carrega_fim:
     lda #$01
@@ -1760,7 +1763,9 @@ carrega_fim:
     lda #$00
     sta hulk_boca
     sta lati_t
-    lda #PRIMEIRO_AU
+    sta hulk_pulo
+    sta au_pulso
+    lda #ENTRADA_AU
     sta lati_cont
     lda #60
     sta cor_espera
@@ -1798,6 +1803,17 @@ atualiza_fim:
     jmp monta_oam_fim
 
 @andando:
+    jsr late                 ; ele chega latindo
+    lda fim_passos           ; o Hulk troca a pata a cada 4px (perna curta);
+    lsr                      ; latindo, o mesmo passo de boca aberta
+    lsr
+    and #$01
+    ldx hulk_boca
+    beq :+
+    ora #$02
+:   tax
+    lda hulk_andando_tab, x
+    sta hulk_quadro
     lda frame_count          ; meio pixel por quadro: um passeio
     and #$01
     bne @desenha
@@ -1805,18 +1821,13 @@ atualiza_fim:
     inc victor_x
     inc hulk_x
     inc fim_passos
-    lda fim_passos           ; troca o pe a cada 8px (o Hulk a cada 4:
-    lsr                      ; perna curta)
+    lda fim_passos           ; os dois trocam o pe a cada 8px
+    lsr
     lsr
     lsr
     and #$01
     sta player_frame
     sta victor_frame
-    lda fim_passos
-    lsr
-    lsr
-    and #$01
-    sta hulk_quadro
     lda fim_passos
     cmp #FIM_CAMINHADA
     bne @desenha
@@ -1830,6 +1841,7 @@ atualiza_fim:
     jmp monta_oam_fim
 
 @acendendo:
+    jsr late
     dec fim_cont
     bne @abana
     lda #FIM_DEGRAU
@@ -1845,12 +1857,14 @@ atualiza_fim:
     sta pal_sujo
     lda fim_rampa
     cmp #FIM_RAMPA_N - 1
-    bne @abana
+    bne @abana_longe
     inc fim_fase             ; aceso: daqui pra frente, so coracaozinho
+@abana_longe:
     jmp @abana
 
 ; ---- de tempos em tempos o Hulk late duas vezes ("au au"), de boca
-; aberta, e os dois dao um pulinho -- ela primeiro, ele logo depois ----
+; aberta e dando um pulinho a cada "au". Com os tres ja parados, os dois
+; pulam junto -- ela primeiro, ele logo depois; andando, so ele pula ----
 late:
     lda lati_t
     bne @latindo
@@ -1883,6 +1897,21 @@ late:
 @fechada:
     stx hulk_boca
 
+    lda lati_t               ; o pulinho dele, um por "au" (os dois nunca
+    sec                      ; se sobrepoem: um so tem altura fora do outro)
+    sbc #$01
+    jsr altura_pulo
+    sta hulk_pulo
+    lda lati_t
+    sec
+    sbc #LATIDO2
+    jsr altura_pulo
+    clc
+    adc hulk_pulo
+    sta hulk_pulo
+
+    lda fim_fase             ; andando: os dois so andam
+    beq @sem_casal
     lda lati_t               ; os pulinhos: y = chao - altura
     sec
     sbc #$01
@@ -1899,13 +1928,20 @@ late:
     sec
     adc #FIM_CHAO - 32
     sta victor_y
+@sem_casal:
 
     lda lati_t
     cmp #LATE_FIM
     bne @fim
-    lda #$00                 ; quieto de novo, por uns 3 a 4 segundos
+    lda #$00
     sta lati_t
-    lda frame_count
+    lda fim_fase             ; chegando: o proximo "au au" vem logo
+    bne @parados
+    lda #ENTRADA_INTERVALO
+    sta lati_cont
+    rts
+@parados:
+    lda frame_count          ; parados: quieto por uns 3 a 4 segundos
     ora #$C0
     sta lati_cont
 @fim:
@@ -1923,9 +1959,11 @@ altura_pulo:
     rts
 
 ; ---- um quadro do latido (A = qual dos AU_N): o ruido no modo "curto"
-; (zumbido, como o da pimenta, so que mais grave) escorregando pra baixo
-; -- o "au" -- com o volume caindo sozinho pelo envelope do APU. O ruido
-; esta livre na cena final: a musica so usa os pulsos e o triangulo. ----
+; (zumbido, como o da pimenta, so que mais grave) escorregando pra baixo,
+; com o volume caindo sozinho pelo envelope do APU. O ruido esta livre na
+; cena final: a musica so usa os pulsos e o triangulo. So ruido soa como
+; "pff", nao como cachorro -- o tom do "au" vem do pulso 2, que o latido
+; pega emprestado da musica por uns quadros (latido_pulso). ----
 som_au:
     tax
     lda au_per, x
@@ -1936,6 +1974,8 @@ som_au:
     sta $400C
     lda #$00                 ; duracao de 10 quadros
     sta $400F
+    lda #AU_PULSO_N          ; e o tom do "au" no pulso 2 (no NMI, ver
+    sta au_pulso             ; latido_pulso) -- 1 byte, o NMI nunca le pela metade
 @fim:
     rts
 
@@ -1975,7 +2015,9 @@ monta_oam_fim:
     ldx #$00
     ldy #HULK_OAM
 @hulk:
-    lda #FIM_CHAO - 17       ; a pata dele no mesmo chao dos dois
+    lda #FIM_CHAO - 17       ; a pata dele no mesmo chao dos dois...
+    sec
+    sbc hulk_pulo            ; ...menos o pulinho
     clc
     adc hulk_dy, x
     sta oam, y
@@ -3928,6 +3970,39 @@ musica_tick:
     inx
     cpx #$03
     bne @vol_canal
+    jmp latido_pulso
+@fim:
+    rts
+
+; --------------------------------------------------------------------------
+;  O tom do latido no pulso 2 (o "au" do Hulk, ver som_au). Enquanto
+;  au_pulso conta, a musica nao escreve nada nesse canal (escreve_periodo e
+;  aplica_volume pulam o canal 1) -- a partitura continua andando por baixo,
+;  so muda. Quando acaba, devolve a nota em que a musica esta agora, entao
+;  o refrao volta no compasso certo.
+; --------------------------------------------------------------------------
+latido_pulso:
+    lda au_pulso
+    beq @fim
+    lda #AU_PULSO_N
+    sec
+    sbc au_pulso
+    tay
+    lda au_pulso_vol, y
+    ora #$B0                 ; duty 50%, volume constante, sem prazo
+    sta $4004
+    lda au_pulso_per, y
+    sta $4006
+    cpy #$00
+    bne :+
+    lda #$00                 ; so no primeiro quadro: o byte alto (e
+    sta $4007                ; reinicia a onda -- o ataque do "au")
+:   dec au_pulso
+    bne @fim
+    ldx #$01                 ; acabou: o pulso 2 volta pra musica
+    jsr escreve_periodo
+    ldx #$01
+    jmp aplica_volume
 @fim:
     rts
 
@@ -3968,6 +4043,12 @@ proxima_nota:
     sta ch_atk, x
 
 escreve_periodo:
+    cpx #$01                 ; o pulso 2 esta latindo? a nota nova espera:
+    bne @livre               ; latido_pulso escreve ela quando devolver
+    lda au_pulso
+    beq @livre
+    rts
+@livre:
     ldy ch_note, x
     beq @pausa
     cpx #$02
@@ -4010,6 +4091,11 @@ escreve_periodo:
 aplica_volume:
     cpx #$02
     beq @fim                ; o triangulo nao tem controle de volume
+    cpx #$01
+    bne @livre
+    lda au_pulso            ; o pulso 2 emprestado pro latido
+    bne @fim
+@livre:
 
     lda ch_atk, x
     beq @talvez_decai
@@ -4076,12 +4162,19 @@ hulk_dx:     .byte 0, 0, 8, 8, 16, 16
 hulk_dy:     .byte 0, 8, 0, 8, 0, 8
 ; parado: [rabo em pe, abanando, latindo rabo em pe, latindo abanando]
 hulk_parado_tab: .byte 0, 2, 3, 4
+; andando: [passo A, passo B, latindo no A, latindo no B]
+hulk_andando_tab: .byte 0, 1, 3, 5
 ; o pulinho dos dois quando ele late (pixels pra cima, quadro a quadro)
 pulo_tab:    .byte 1, 3, 4, 5, 5, 4, 3, 1
 PULO_N = 8
 ; o "au": ruido curto ($80) do agudo pro grave
 au_per:      .byte $87, $88, $89, $8A, $8B
 AU_N = 5
+; o tom do "au" no pulso 2: um ganido curto que cai de ~900 Hz pra ~500 Hz
+; (periodo = 1789773 / (16 * Hz) - 1) e apaga rapido
+au_pulso_per: .byte 123, 133, 145, 160, 180, 205, 225
+au_pulso_vol: .byte 13, 12, 11, 9, 7, 4, 2
+AU_PULSO_N = 7
 
 ; pecas da moldura, por tipo de linha: topo, meio, base
 borda_esq:   .byte TILE_BORDA+0, TILE_BORDA+3, TILE_BORDA+5
