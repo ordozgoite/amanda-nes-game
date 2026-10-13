@@ -292,8 +292,8 @@ def main():
         nome_lido = [d.bus.vram[0x2000 + linha*32 + col + i] for i in range(7)]
         check(f"parte {parte}: etiqueta do falante certo",
               nome_lido == nome_por_falante[falante], f"tiles {nome_lido}")
-        if parte == 8:   # a reacao da Amanda: so o coracaozinho, sem palavra
-            coracao = d.bus.vram[0x2000 + (linha + 1)*32 + col + 6]
+        if parte == 8:   # "...INTELIGENTE! <3": o coracaozinho fecha a 3a linha
+            coracao = d.bus.vram[0x2000 + (linha + 3)*32 + col + 13]
             check("parte 8: o coracaozinho aparece", coracao == 235, f"tile {coracao}")
         if parte == 2:   # PARTE_SENTAR: ela sentou ANTES desta fala (o convite)
             check("a animacao de sentar da Amanda terminou: ela esta sentada",
@@ -376,7 +376,7 @@ def main():
     UI_BARRA_MEIA = UI_BASE + 4
     BARRA_ADDR = 0x2000 + 2*32 + 8
     VIDAS_ADDR = 0x2000 + 3*32 + 8
-    from make_jogo import (BARRA_TILES, PONTOS_MIN, SALTO_MAX, PIMENTA_DESDE,
+    from make_jogo import (BARRA_TILES, PONTOS_MIN, ERROS_MAX, SALTO_MAX, PIMENTA_DESDE,
                            PIMENTA_LONGE, PZ_N)
     check("uma pizza acende MEIO segmento (cada um vale duas)",
           d.bus.vram[BARRA_ADDR] == UI_BARRA_MEIA,
@@ -415,8 +415,9 @@ def main():
           d.bus.vram[VIDAS_ADDR] == UI_VIDA_VAZIA,
           f"tile {d.bus.vram[VIDAS_ADDR]}")
     check("o resto das vidas continua cheio",
-          all(d.bus.vram[VIDAS_ADDR + i] == UI_VIDA_CHEIA for i in range(1, 5)),
-          [d.bus.vram[VIDAS_ADDR + i] for i in range(1, 5)])
+          all(d.bus.vram[VIDAS_ADDR + i] == UI_VIDA_CHEIA for i in range(1, ERROS_MAX)) and
+          d.bus.vram[VIDAS_ADDR + ERROS_MAX] == 0,      # e nenhum coracao a mais depois
+          [d.bus.vram[VIDAS_ADDR + i] for i in range(1, ERROS_MAX + 1)])
 
     print("\n== 8b. O minigame: pizzas nao saltam de extremo a extremo ==")
     s = NES(ROM)
@@ -898,7 +899,7 @@ def main():
         f.frame()
         if f.bus.ram[sym["jogo_fase"]] == 2:
             break
-    check("5 erros encerram a rodada", f.bus.ram[sym["jogo_fase"]] == 2,
+    check(f"{ERROS_MAX} erros encerram a rodada", f.bus.ram[sym["jogo_fase"]] == 2,
           f"erros={f.bus.ram[sym['jogo_erros']]} fase={f.bus.ram[sym['jogo_fase']]}")
 
     print("\n== 10b. Derrota: B tenta de novo sem sair da tela ==")
@@ -922,7 +923,7 @@ def main():
         g.frame()
         if g.bus.ram[sym["jogo_fase"]] == 2:
             break
-    check("5 erros de novo, numa instancia separada", g.bus.ram[sym["jogo_fase"]] == 2)
+    check(f"{ERROS_MAX} erros de novo, numa instancia separada", g.bus.ram[sym["jogo_fase"]] == 2)
     g.frame(BTN_START)
     for _ in range(6): g.frame()
     check("START na derrota nao faz nada",

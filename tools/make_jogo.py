@@ -34,7 +34,7 @@ CHAO_Y = 192   # tem que bater com CHAO_Y em src/jogo.s
 # em vez de duplicar o numero a mao -- e o texto da intro/vitoria tambem
 # precisa saber PONTOS_MIN pra escrever "PEGUE N PIZZAS!" certo.
 PONTOS_MIN = 30
-ERROS_MAX  = 5
+ERROS_MAX  = 3          # tres vidas: pedido do Victor, pra ficar mais dificil
 
 # A barra de pontos vale DUAS pizzas por tile (vazio / meio / cheio): um
 # tile por pizza nao cabe -- a barra comeca na coluna 8 e 30 tiles passariam

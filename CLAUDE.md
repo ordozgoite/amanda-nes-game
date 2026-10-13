@@ -323,7 +323,7 @@ Minigame das pizzas caindo, com fluxo completo:
   apertar B.
 - **jogando** (`fase = 0`): HUD visual, nao numerico -- barra de
   `BARRA_TILES` segmentos (cada um vale 2 pizzas: vazio/meio/cheio) e
-  `ERROS_MAX` coracoezinhos, nas linhas 2-3 (fora da faixa que overscan de
+  `ERROS_MAX` coracoezinhos (3 -- eram 5, ficou facil demais), nas linhas 2-3 (fora da faixa que overscan de
   TV de tubo corta). `PONTOS_MIN = 30`, uns 50 s de jogo.
   **Pimentas**: a partir de `PIMENTA_DESDE` pizzas, toda batida continua
   soltando uma pizza e, as vezes, uma pimenta JUNTO (mesmo quadro), nunca

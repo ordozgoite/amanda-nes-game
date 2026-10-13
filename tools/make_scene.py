@@ -428,7 +428,7 @@ GRUPOS_FALA = [
     (1, ["E VOC\xCA?"]),
     (0, ["EU SOU", "PROGRAMADOR..."]),
     (0, ["E FALO VARIOS", "IDIOMAS..."]),
-    (1, ["      \x02"]),                        # so a reacao dela, sem palavra
+    (1, ["NOSSA...", "VOC\xCA E TAO", "INTELIGENTE! \x02"]),
     (0, ["BORA PEDIR AS", "PIZZAS?"]),
     (1, ["VAMOS! VOU", "PEDIR UM", "COMBO DE TRES."]),
     (0, ["NOSSA! VOC\xCA", "BATE BEM DE", "PRATO, HEIN?"]),
